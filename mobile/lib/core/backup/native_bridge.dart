@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 
 import '../config/app_config.dart';
 import 'media_exporter.dart';
+import 'media_source.dart';
 
 /// Abstraction over the Android native Kotlin bridge (`MethodChannel` + `EventChannel`).
 /// Easily fakeable in unit and widget tests.
@@ -11,11 +12,8 @@ abstract class NativeBackupBridge {
   Future<PermissionState> checkPermissions();
   Future<PermissionState> requestMediaPermissions();
   Future<void> openAllFilesAccessSettings();
-  Future<List<BackupItem>> discoverMedia({
-    required bool includeCamera,
-    required bool includeScreenshots,
-  });
-  Future<Map<String, int>> getSourceCounts();
+  Future<List<BackupItem>> discoverMedia({required Set<String> enabledSourceIds});
+  Future<Map<String, MediaSourceStats>> getSourceStats();
   Future<ConnectionTestResult> testConnection(AppSettings settings);
   Future<void> startBackup({
     required AppSettings settings,
@@ -64,16 +62,10 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
   }
 
   @override
-  Future<List<BackupItem>> discoverMedia({
-    required bool includeCamera,
-    required bool includeScreenshots,
-  }) async {
+  Future<List<BackupItem>> discoverMedia({required Set<String> enabledSourceIds}) async {
     final raw = await _methodChannel.invokeListMethod<Object?>(
       'discoverMedia',
-      {
-        'includeCamera': includeCamera,
-        'includeScreenshots': includeScreenshots,
-      },
+      {'enabledSources': enabledSourceIds.toList()},
     );
     if (raw == null) return const [];
     return raw
@@ -83,13 +75,18 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
   }
 
   @override
-  Future<Map<String, int>> getSourceCounts() async {
-    final raw = await _methodChannel.invokeMapMethod<Object?, Object?>('getSourceCounts');
-    if (raw == null) return const {'camera': 0, 'screenshots': 0};
-    return {
-      'camera': (raw['camera'] as num?)?.toInt() ?? 0,
-      'screenshots': (raw['screenshots'] as num?)?.toInt() ?? 0,
-    };
+  Future<Map<String, MediaSourceStats>> getSourceStats() async {
+    final raw = await _methodChannel.invokeMapMethod<Object?, Object?>('getSourceStats');
+    if (raw == null) return const {};
+    final out = <String, MediaSourceStats>{};
+    for (final entry in raw.entries) {
+      final key = entry.key;
+      final value = entry.value;
+      if (key is String && value is Map<Object?, Object?>) {
+        out[key] = MediaSourceStats.fromMap(value);
+      }
+    }
+    return out;
   }
 
   @override

@@ -8,6 +8,7 @@ import 'widgets/batch_limit_selector.dart';
 import 'widgets/connection_banner.dart';
 import 'widgets/destination_card.dart';
 import 'widgets/error_log_sheet.dart';
+import 'widgets/media_sources_card.dart';
 import 'widgets/mode_selector.dart';
 import 'widgets/permissions_card.dart';
 import 'widgets/progress_dashboard.dart';
@@ -113,11 +114,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  DestinationCard(
-                    destinationPreview: ctrl.destinationPreview,
-                    cameraCount: ctrl.sourceCounts['camera'] ?? 0,
-                    screenshotsCount: ctrl.sourceCounts['screenshots'] ?? 0,
-                  ),
+                  DestinationCard(destinationPreview: ctrl.destinationPreview),
                   if (ctrl.connectionResult != null) ...[
                     const SizedBox(height: 10),
                     ConnectionBanner(result: ctrl.connectionResult!),
@@ -136,6 +133,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     selectedMode: ctrl.mode,
                     enabled: !isRunning,
                     onSelect: ctrl.setMode,
+                  ),
+                  const SizedBox(height: 16),
+                  MediaSourcesCard(
+                    sources: ctrl.mediaSources,
+                    enabledSourceIds: ctrl.settings.enabledSourceIds,
+                    stats: ctrl.sourceStats,
+                    estimating: ctrl.estimatingStats,
+                    hasEstimated: ctrl.hasEstimatedStats,
+                    selectedFiles: ctrl.selectedFileCount,
+                    selectedBytes: ctrl.selectedTotalBytes,
+                    enabled: !isRunning,
+                    onToggle: ctrl.toggleSource,
+                    onRefreshEstimate: ctrl.refreshSourceStats,
                   ),
                   const SizedBox(height: 16),
                   BatchLimitSelector(

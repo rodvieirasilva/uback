@@ -23,8 +23,7 @@ class ImageVideoMediaExporter implements MediaExporter {
   Future<List<BackupItem>> discoverItems({BackupLimit? limit}) async {
     final settings = _settingsProvider();
     final discovered = await _bridge.discoverMedia(
-      includeCamera: settings.includeCamera,
-      includeScreenshots: settings.includeScreenshots,
+      enabledSourceIds: settings.enabledSourceIds,
     );
     return BackupPlanner.plan(discovered, limit: limit);
   }

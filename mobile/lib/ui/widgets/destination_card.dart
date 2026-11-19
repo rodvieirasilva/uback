@@ -4,14 +4,10 @@ import '../../core/testing/test_keys.dart';
 
 class DestinationCard extends StatelessWidget {
   final String destinationPreview;
-  final int cameraCount;
-  final int screenshotsCount;
 
   const DestinationCard({
     super.key,
     required this.destinationPreview,
-    required this.cameraCount,
-    required this.screenshotsCount,
   });
 
   @override
@@ -44,11 +40,6 @@ class DestinationCard extends StatelessWidget {
                 key: AppTestKeys.destinationPreview,
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Camera: $cameraCount  •  Screenshots: $screenshotsCount',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
             ),
           ],
         ),

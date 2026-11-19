@@ -85,26 +85,23 @@ object MediaDiscovery {
 
     fun discover(
         context: Context,
-        includeCamera: Boolean = true,
-        includeScreenshots: Boolean = true,
+        enabledSources: Set<String> = setOf("camera", "screenshots"),
     ): List<DiscoveredMediaItem> {
         val results = mutableListOf<DiscoveredMediaItem>()
-        if (!includeCamera && !includeScreenshots) return results
+        if (enabledSources.isEmpty()) return results
 
         queryCollection(
             context = context,
             collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             isVideo = false,
-            includeCamera = includeCamera,
-            includeScreenshots = includeScreenshots,
+            enabledSources = enabledSources,
             out = results,
         )
         queryCollection(
             context = context,
             collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
             isVideo = true,
-            includeCamera = includeCamera,
-            includeScreenshots = includeScreenshots,
+            enabledSources = enabledSources,
             out = results,
         )
 
@@ -117,28 +114,87 @@ object MediaDiscovery {
         return results
     }
 
-    fun getSourceCounts(context: Context): Map<String, Int> {
-        val all = discover(context, includeCamera = true, includeScreenshots = true)
-        var cameraCount = 0
-        var screenshotsCount = 0
-        for (item in all) {
-            when (item.sourceFolder) {
-                "camera" -> cameraCount++
-                "screenshots" -> screenshotsCount++
+    /**
+     * Fast MediaStore-only aggregate stats (count + totalBytes) per source.
+     * Avoids per-file disk I/O so thousands of files estimate quickly without blocking the UI.
+     */
+    fun getSourceStats(context: Context): Map<String, Map<String, Any>> {
+        val counts = mutableMapOf("camera" to 0, "screenshots" to 0)
+        val bytes = mutableMapOf("camera" to 0L, "screenshots" to 0L)
+
+        accumulateStats(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, counts, bytes)
+        accumulateStats(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, counts, bytes)
+
+        return mapOf(
+            "camera" to mapOf(
+                "count" to (counts["camera"] ?: 0),
+                "totalBytes" to (bytes["camera"] ?: 0L),
+            ),
+            "screenshots" to mapOf(
+                "count" to (counts["screenshots"] ?: 0),
+                "totalBytes" to (bytes["screenshots"] ?: 0L),
+            ),
+        )
+    }
+
+    private fun accumulateStats(
+        context: Context,
+        collectionUri: Uri,
+        counts: MutableMap<String, Int>,
+        bytes: MutableMap<String, Long>,
+    ) {
+        val projection = mutableListOf(
+            MediaStore.MediaColumns.DATA,
+            MediaStore.MediaColumns.SIZE,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            projection.add(MediaStore.MediaColumns.RELATIVE_PATH)
+        }
+
+        val selection = buildActiveSelection()
+        context.contentResolver.query(
+            collectionUri,
+            projection.toTypedArray(),
+            selection,
+            null,
+            null,
+        )?.use { cursor ->
+            val dataIdx = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+            val sizeIdx = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+            val relIdx = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+            } else {
+                -1
+            }
+
+            while (cursor.moveToNext()) {
+                val localPath = if (dataIdx >= 0) cursor.getString(dataIdx) else null
+                val relPath = if (relIdx >= 0) cursor.getString(relIdx) else null
+                val source = classifySource(relPath, localPath) ?: continue
+                val size = cursor.getLong(sizeIdx)
+                if (size <= 0L) continue
+                counts[source] = (counts[source] ?: 0) + 1
+                bytes[source] = (bytes[source] ?: 0L) + size
             }
         }
-        return mapOf(
-            "camera" to cameraCount,
-            "screenshots" to screenshotsCount,
-        )
+    }
+
+    private fun buildActiveSelection(): String {
+        val selectionParts = mutableListOf("${MediaStore.MediaColumns.SIZE} > 0")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            selectionParts.add("${MediaStore.MediaColumns.IS_PENDING} = 0")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            selectionParts.add("${MediaStore.MediaColumns.IS_TRASHED} = 0")
+        }
+        return selectionParts.joinToString(" AND ")
     }
 
     private fun queryCollection(
         context: Context,
         collectionUri: Uri,
         isVideo: Boolean,
-        includeCamera: Boolean,
-        includeScreenshots: Boolean,
+        enabledSources: Set<String>,
         out: MutableList<DiscoveredMediaItem>,
     ) {
         val projection = mutableListOf(
@@ -158,14 +214,7 @@ object MediaDiscovery {
             projection.add(MediaStore.MediaColumns.IS_TRASHED)
         }
 
-        val selectionParts = mutableListOf("${MediaStore.MediaColumns.SIZE} > 0")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            selectionParts.add("${MediaStore.MediaColumns.IS_PENDING} = 0")
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            selectionParts.add("${MediaStore.MediaColumns.IS_TRASHED} = 0")
-        }
-        val selection = selectionParts.joinToString(" AND ")
+        val selection = buildActiveSelection()
 
         context.contentResolver.query(
             collectionUri,
@@ -197,8 +246,7 @@ object MediaDiscovery {
                 val relPath = if (relIdx >= 0) cursor.getString(relIdx) else null
 
                 val source = classifySource(relPath, localPath) ?: continue
-                if (source == "camera" && !includeCamera) continue
-                if (source == "screenshots" && !includeScreenshots) continue
+                if (!enabledSources.contains(source)) continue
                 if (localPath.isNullOrBlank()) continue
 
                 val file = File(localPath)

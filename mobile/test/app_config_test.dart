@@ -11,8 +11,7 @@ void main() {
     password: 'default_password',
     domain: '',
     deviceFolderOverride: '',
-    includeCamera: true,
-    includeScreenshots: true,
+    enabledSourceIds: {'camera', 'screenshots'},
   );
 
   test('loads compile-time defaults when storage is empty', () async {
@@ -26,8 +25,7 @@ void main() {
     expect(loaded.host, '192.168.1.50');
     expect(loaded.username, 'default_user');
     expect(loaded.password, 'default_password');
-    expect(loaded.includeCamera, isTrue);
-    expect(loaded.includeScreenshots, isTrue);
+    expect(loaded.enabledSourceIds, {'camera', 'screenshots'});
   });
 
   test('runtime saved settings override defaults and reset restores defaults', () async {
@@ -44,7 +42,7 @@ void main() {
       port: 4455,
       username: 'rodrigo',
       password: 'secret',
-      includeScreenshots: false,
+      enabledSourceIds: {'camera'},
     );
     await repo.save(custom);
 
@@ -53,15 +51,20 @@ void main() {
     expect(reloaded.port, 4455);
     expect(reloaded.username, 'rodrigo');
     expect(reloaded.password, 'secret');
-    expect(reloaded.includeScreenshots, isFalse);
+    expect(reloaded.enabledSourceIds, {'camera'});
+    expect(
+      reloaded.destinationPreview("Rodrigo's Phone"),
+      'smb://10.0.0.99:4455/safe/local/phone/rodrigo/camera/YYYY/MM',
+    );
 
     final restored = await repo.resetToDefaults();
     expect(restored.host, '192.168.1.50');
     expect(restored.username, 'default_user');
-    expect(restored.includeScreenshots, isTrue);
+    expect(restored.enabledSourceIds, {'camera', 'screenshots'});
 
     final afterReset = await repo.load();
     expect(afterReset.host, '192.168.1.50');
     expect(afterReset.password, 'default_password');
+    expect(afterReset.enabledSourceIds, {'camera', 'screenshots'});
   });
 }
