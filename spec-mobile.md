@@ -9,8 +9,8 @@ This document details the specifications for the **UBack (Ultimate Backup)** mob
 - **Target Platform**: Android (Mobile).
 - **Project Location**: `/mobile` directory inside the `uback` repository (managed with `mise` at the repository root).
 - **Package Name**: `uback.rodvieirasilva.github.io` (kept modular/configurable for easy future renaming).
-- **Initial Scope (Phase 1)**: **Images and Videos only**. The architecture must remain extensible via abstract interfaces for future media types (e.g., WhatsApp, Documents, SMS).
-- **Primary Goal**: Reliably copy or move thousands of photos and videos from the phone's internal storage to a remote NAS share (`{base_path}/{device_name}/{source}/{YYYY}/{MM}/{filename}`, e.g., `N:\safe\local\phone\{device_name}\camera\2025\04\...`, `...\screenshots\...`, `...\whatsapp-images\...`) over **SMB**, with strict post-transfer verification.
+- **Initial Scope (Phase 1)**: **Camera and Screenshots (Images and Videos) only**. WhatsApp and other sources (Documents, SMS, etc.) are deferred to future phases; the architecture remains extensible via abstract interfaces.
+- **Primary Goal**: Reliably copy or move thousands of Camera and Screenshots photos and videos from the phone's internal storage to a remote NAS share (`{base_path}/{device_name}/{source}/{YYYY}/{MM}/{filename}`, e.g., `N:\safe\local\phone\{device_name}\camera\2025\04\...`, `...\screenshots\...`) over **SMB**, with strict post-transfer verification.
 
 ---
 
@@ -52,28 +52,23 @@ The destination subdirectory adapts automatically to the device running the app.
 - **Examples**:
   - `"Jaqueline's Phone"` -> `jaqueline`
   - `"Rodrigo's phone"` -> `rodrigo`
-- **Source Folder (`{source}`) Sanitization Rules** (derived from Android MediaStore `BUCKET_DISPLAY_NAME`, falling back to parent directory name or `other`):
-  - Trim whitespace and convert to lowercase.
-  - Replace spaces and runs of separators with `-` (stripping any invalid filesystem/SMB path characters).
-  - Examples:
-    - `"Camera"` (`DCIM/Camera`) -> `camera`
-    - `"Screenshots"` (`DCIM/Screenshots`) -> `screenshots`
-    - `"WhatsApp Images"` -> `whatsapp-images`
-    - `"WhatsApp Video"` -> `whatsapp-video`
-    - `"Download"` -> `download`
+- **Source Folder (`{source}`) Sanitization & Phase 1 Sources**:
+  - Phase 1 covers **Camera** and **Screenshots** only:
+    - `DCIM/Camera` -> `camera`
+    - `DCIM/Screenshots` (Samsung One UI) & `Pictures/Screenshots` (stock Android / emulator) -> `screenshots`
+  - General sanitization rules for future sources (derived from Android MediaStore `BUCKET_DISPLAY_NAME`, falling back to parent directory name or `other`): trim whitespace, lowercase, replace spaces/separators with `-`, strip invalid filesystem/SMB path characters.
 - **Target Path**:
   - `smb://{host}:{port}/{share}/{base_path}/{device_name}/{source}/{YYYY}/{MM}/{filename}`
   - Files are grouped right under `{device_name}` by where they came from (`{source}`), then into `YYYY/MM` subfolders based on each file's `createdAt` timestamp (faster SMB directory listings and cleaner browsing for thousands of files).
   - Examples:
     - `smb://192.168.1.100:445/safe/local/phone/rodrigo/camera/2025/04/IMG_20250412_143022.jpg`
     - `smb://192.168.1.100:445/safe/local/phone/rodrigo/screenshots/2025/04/Screenshot_20250412.png`
-    - `smb://192.168.1.100:445/safe/local/phone/rodrigo/whatsapp-images/2025/04/IMG-20250412-WA0001.jpg`
 - If the OS cannot provide a readable user-assigned device name, fall back to the sanitized device model and allow overriding it in Settings.
 - Preserve the original file's `lastModified` timestamp on the NAS where supported by the SMB server.
 
 ### 3.1 Source Folder Selection
-- By default, all Android MediaStore **Image and Video** buckets/folders are included.
-- Settings includes a lightweight, text-only list of discovered folders/albums (e.g., `DCIM/Camera`, `DCIM/Screenshots`, `Pictures/WhatsApp Images`) with checkboxes (and file counts, **no thumbnails**) so the user can include or exclude specific folders.
+- Phase 1 includes **Camera** (`DCIM/Camera`) and **Screenshots** (`DCIM/Screenshots`, `Pictures/Screenshots`) only — WhatsApp and other third-party app folders are excluded for now.
+- Settings provides simple text-only checkboxes (with file counts, **no thumbnails**) to toggle `Camera` and `Screenshots` on or off individually (both enabled by default).
 
 ---
 
@@ -178,7 +173,7 @@ class BackupItem {
   final String id;
   final String fileName;
   final String localPath;
-  final String sourceFolder; // Sanitized origin folder, e.g. "camera", "screenshots", "whatsapp-images"
+  final String sourceFolder; // Sanitized origin folder, e.g. "camera", "screenshots"
   final int sizeBytes;
   final DateTime createdAt; // Used for oldest-first sorting and YYYY/MM pathing
   final String mimeType;
@@ -216,7 +211,7 @@ abstract class MediaExporter {
 
 ### Phase 1 Concrete Exporter
 - `ImageVideoMediaExporter`:
-  - Queries Android MediaStore for Images and Videos only (no thumbnail generation), filtered by user-selected folders/albums (all folders selected by default).
+  - Queries Android MediaStore for Images and Videos from **Camera** (`DCIM/Camera`) and **Screenshots** (`DCIM/Screenshots` and `Pictures/Screenshots`) only (no thumbnail generation), respecting the user's Camera/Screenshots toggles in Settings. WhatsApp and other folders are excluded in Phase 1.
   - Requests Android `MANAGE_EXTERNAL_STORAGE` ("All files access") along with `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, and `POST_NOTIFICATIONS` (for the Foreground Service notification) so Crop Mode can delete verified files immediately and silently.
   - Sorts results oldest-first (`createdAt` ascending) and applies optional `BackupLimit` (`maxFiles` or `maxBytes`).
 
