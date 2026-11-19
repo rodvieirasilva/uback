@@ -1,0 +1,31 @@
+# Local secrets / compile-time defaults (NEVER commit)
+config.toml
+*.local.toml
+.env
+.env.*
+dart_defines.json
+mobile/dart_defines.json
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Flutter / Dart / Android (in /mobile or root)
+.dart_tool/
+.packages
+build/
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/android/.gradle/
+**/android/local.properties
+**/android/key.properties
+**/*.jks
+**/*.keystore
+**/*.apk
+**/*.aab

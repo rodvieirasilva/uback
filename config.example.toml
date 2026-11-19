@@ -1,0 +1,11 @@
+# Copy this file to `config.toml` and fill in your local NAS defaults.
+# `config.toml` is gitignored and injected at compile time as default app settings.
+
+[smb]
+host = "192.168.1.100"
+port = 445
+share = "safe"
+base_path = "local/phone"
+username = "your-nas-user"
+password = "your-nas-password"
+domain = ""
