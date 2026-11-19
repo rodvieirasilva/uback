@@ -1,4 +1,74 @@
 [tools]
-# Add project runtimes/tools here, e.g.:
-# rust = "latest"
-# flutter = "latest"
+java = "temurin-25"
+flutter = "latest"
+
+[env]
+ANDROID_HOME = "{{env.HOME}}/Android/Sdk"
+ANDROID_SDK_ROOT = "{{env.HOME}}/Android/Sdk"
+_.path = [
+  "{{env.HOME}}/Android/Sdk/cmdline-tools/latest/bin",
+  "{{env.HOME}}/Android/Sdk/platform-tools",
+  "{{env.HOME}}/Android/Sdk/emulator",
+]
+
+[tasks.config]
+description = "Generate mobile/dart_defines.json from local config.toml"
+run = "python3 scripts/parse_config.py"
+
+[tasks.analyze]
+description = "Run Flutter static analysis"
+dir = "mobile"
+run = "flutter analyze"
+
+[tasks.test]
+description = "Run Flutter unit and widget tests"
+dir = "mobile"
+run = "flutter test"
+
+[tasks.setup-avd]
+description = "Ensure the Android test AVD exists"
+run = "bash scripts/ensure_avd.sh"
+
+[tasks.emulator-start]
+description = "Start headless Android Emulator and keep it running across test/screenshot runs"
+run = "bash scripts/emulator_ctl.sh start"
+
+[tasks.emulator-stop]
+description = "Stop the running Android Emulator"
+run = "bash scripts/emulator_ctl.sh stop"
+
+[tasks.test-e2e]
+description = "Run full E2E integration tests on Android Emulator against a real local SMB2 server"
+run = "bash scripts/e2e_emulator.sh"
+
+[tasks.test-e2e-chaos]
+description = "Run Emulator E2E resilience tests (big files, slow connection, mid-transfer disconnect + retry)"
+run = "UBACK_E2E_CHAOS=1 bash scripts/e2e_emulator.sh"
+
+[tasks.screenshots]
+description = "Capture updated Dark & Light screenshots in docs/screenshots/ via Android Emulator"
+run = "bash scripts/update_screenshots.sh"
+
+[tasks.release-check]
+description = "Run analyze, unit/widget tests, and full Emulator E2E tests before releasing"
+depends = ["analyze", "test", "test-e2e"]
+
+[tasks.build-apk]
+description = "Build debug APK with config.toml defaults injected"
+depends = ["config"]
+dir = "mobile"
+run = "flutter build apk --debug --dart-define-from-file=dart_defines.json"
+
+[tasks.build-release]
+description = "Build release APK with config.toml defaults injected"
+depends = ["config"]
+dir = "mobile"
+run = "flutter build apk --release --dart-define-from-file=dart_defines.json"
+
+[tasks.deploy-device]
+description = "Build debug APK with config.toml defaults and install on wireless ADB device"
+run = "bash scripts/deploy_device.sh debug"
+
+[tasks.deploy-release]
+description = "Build release APK with config.toml defaults and install on wireless ADB device"
+run = "bash scripts/deploy_device.sh release"

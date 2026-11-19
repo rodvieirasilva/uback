@@ -1,6 +1,6 @@
 # UBack Mobile App Specification
 
-This document details the specifications for the **UBack (Ultimate Backup)** mobile application, following Spec-Driven Development principles.
+This document outlines the architecture and feature requirements for the **UBack (Ultimate Backup)** mobile application.
 
 ---
 
