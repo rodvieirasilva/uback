@@ -53,9 +53,15 @@ The destination subdirectory adapts automatically to the device running the app.
   - `"Jaqueline's Phone"` -> `jaqueline`
   - `"Rodrigo's phone"` -> `rodrigo`
 - **Target Path**:
-  - `smb://{host}:{port}/{share}/{base_path}/{device_name}/media`
-  - Example: `smb://192.168.1.100:445/safe/local/phone/rodrigo/media`
+  - `smb://{host}:{port}/{share}/{base_path}/{device_name}/media/{YYYY}/{MM}/{filename}`
+  - Files are organized into `YYYY/MM` subfolders based on each file's `createdAt` timestamp (faster SMB directory listings and cleaner browsing for thousands of files).
+  - Example: `smb://192.168.1.100:445/safe/local/phone/rodrigo/media/2025/04/IMG_20250412_143022.jpg`
 - If the OS cannot provide a readable user-assigned device name, fall back to the sanitized device model and allow overriding it in Settings.
+- Preserve the original file's `lastModified` timestamp on the NAS where supported by the SMB server.
+
+### 3.1 Source Folder Selection
+- By default, all Android MediaStore **Image and Video** buckets/folders are included.
+- Settings includes a lightweight, text-only list of discovered folders/albums (e.g., `DCIM/Camera`, `DCIM/Screenshots`, `Pictures/WhatsApp Images`) with checkboxes (and file counts, **no thumbnails**) so the user can include or exclude specific folders.
 
 ---
 
@@ -106,31 +112,39 @@ The app is built specifically to handle **thousands of files** without memory pr
 
 ## 6. SMB Transport & Mandatory Post-Transfer Verification
 
-SMB over mobile Wi-Fi can silently truncate files, drop sockets mid-stream, or leave partial/0-byte artifacts. Data integrity is the highest priority—especially in **Crop Mode**.
+SMB over mobile Wi-Fi can silently truncate files, drop sockets mid-stream, or leave partial/0-byte artifacts. Data integrity is the highest priority across **both Copy and Crop modes**.
 
-### 6.1 Transfer & Verification Protocol (Per File)
+### 6.1 Native Android SMB Engine
+- Implement SMB2/SMB3 transport natively in Android **Kotlin** (using `smbj`) exposed to Flutter via Platform Channels, running inside the Android Foreground Service.
+- Streaming I/O with fixed-size buffers ensures flat memory usage even for multi-gigabyte 4K videos.
+
+### 6.2 Transfer & Verification Protocol (Per File — Both Copy & Crop Modes)
 For each `BackupItem`:
-1. **Local Hash Calculation**: Compute the file's **SHA-256** checksum and exact byte size (can be streamed to avoid loading large videos into RAM).
+1. **Local Hash Calculation**: Compute the file's **SHA-256** checksum and exact byte size by streaming from local storage (never loading entire files into RAM).
 2. **Pre-Flight Remote Check (Idempotency / Resume)**:
-   - Check if the target file already exists at the destination.
+   - Ensure the remote `YYYY/MM` directory exists (creating intermediate directories as needed).
+   - Check if the target file already exists at `{destination}/{YYYY}/{MM}/{filename}`.
    - If it exists: verify remote byte size and read back remote SHA-256.
      - If `remoteSize == localSize` AND `remoteHash == localHash`: mark as **Already Verified / Skipped** (safe to delete locally in Crop Mode).
-     - If sizes or hashes differ: do **not** overwrite a different file blindly; disambiguate the target filename (e.g., append short hash suffix) so no distinct file is lost.
+     - If sizes or hashes differ: do **not** overwrite a different file blindly; disambiguate the target filename (e.g., `<stem>_<shortHash>.<ext>`) so no distinct file is lost.
 3. **Atomic Upload via Temporary File**:
-   - Stream local file in chunks to `<destination>/<filename>.uback.tmp` (cleaning up any stale `.uback.tmp` first).
+   - Stream local file in chunks to `<target>.uback.tmp` (removing any stale `.uback.tmp` first).
    - Explicitly flush and close the remote file handle.
-4. **Mandatory Post-Transfer Verification**:
+4. **Mandatory Full SHA-256 Read-Back Verification (Always On)**:
    - Re-query remote metadata and verify `remoteTempSize == localSize`.
    - **Read back** the uploaded `.uback.tmp` file over SMB in streaming chunks and compute its **SHA-256** hash.
-   - Confirm `remoteHash == localHash`.
-   - If verification fails: delete `<filename>.uback.tmp` on the server and treat the attempt as failed.
-5. **Commit (Rename)**:
-   - Atomically rename `<filename>.uback.tmp` -> `<filename>` on the SMB server.
-   - Confirm `<filename>` exists with expected size.
+   - Confirm `remoteHash == localHash` (enforced in **both Copy and Crop modes**).
+   - If verification fails: delete `<target>.uback.tmp` on the server and treat the attempt as failed.
+5. **Commit (Rename & Timestamp)**:
+   - Atomically rename `<target>.uback.tmp` -> `<target>` on the SMB server.
+   - Set remote `lastModified` timestamp to match the source file (best-effort if server permits).
+   - Confirm `<target>` exists with expected size.
 6. **Retries & Reconnection**:
    - Retry transient SMB/network failures with exponential backoff (e.g., up to 3 attempts per file), re-establishing the SMB session if dropped.
 7. **Strict Local Deletion Gate (Crop Mode Only)**:
+   - Uses Android **`MANAGE_EXTERNAL_STORAGE` ("All files access")** permission (personal sideloaded app) so verified files can be deleted automatically one-by-one without batch system confirmation popups.
    - `cleanUpItem(item)` is invoked **strictly and immediately only after** steps 4 & 5 succeed (or step 2 confirms an exact hash match).
+   - After deleting the local file, notify Android MediaStore (`MediaScannerConnection` / MediaStore delete) so Samsung Gallery refreshes immediately without leaving ghost thumbnails.
    - If a file fails verification or transfer, the local file is **never** deleted, and the engine logs the failure and continues with the remaining files.
 
 ---
@@ -188,8 +202,8 @@ abstract class MediaExporter {
 
 ### Phase 1 Concrete Exporter
 - `ImageVideoMediaExporter`:
-  - Queries Android MediaStore for Images and Videos only (no thumbnail generation).
-  - Requests the appropriate Android storage/media permissions (`READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `MANAGE_EXTERNAL_STORAGE` or MediaStore delete request flow on Android 11+ for Crop Mode).
+  - Queries Android MediaStore for Images and Videos only (no thumbnail generation), filtered by user-selected folders/albums (all folders selected by default).
+  - Requests Android `MANAGE_EXTERNAL_STORAGE` ("All files access") along with `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, and `POST_NOTIFICATIONS` (for the Foreground Service notification) so Crop Mode can delete verified files immediately and silently.
   - Sorts results oldest-first (`createdAt` ascending) and applies optional `BackupLimit` (`maxFiles` or `maxBytes`).
 
 ---
