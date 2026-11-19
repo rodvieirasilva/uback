@@ -3,12 +3,12 @@ java = "temurin-25"
 flutter = "latest"
 
 [env]
-ANDROID_HOME = "{{env.HOME}}/Android/Sdk"
-ANDROID_SDK_ROOT = "{{env.HOME}}/Android/Sdk"
+ANDROID_HOME = "{{get_env(name='ANDROID_HOME', default=env.HOME ~ '/Android/Sdk')}}"
+ANDROID_SDK_ROOT = "{{get_env(name='ANDROID_SDK_ROOT', default=get_env(name='ANDROID_HOME', default=env.HOME ~ '/Android/Sdk'))}}"
 _.path = [
-  "{{env.HOME}}/Android/Sdk/cmdline-tools/latest/bin",
-  "{{env.HOME}}/Android/Sdk/platform-tools",
-  "{{env.HOME}}/Android/Sdk/emulator",
+  "{{get_env(name='ANDROID_HOME', default=env.HOME ~ '/Android/Sdk')}}/cmdline-tools/latest/bin",
+  "{{get_env(name='ANDROID_HOME', default=env.HOME ~ '/Android/Sdk')}}/platform-tools",
+  "{{get_env(name='ANDROID_HOME', default=env.HOME ~ '/Android/Sdk')}}/emulator",
 ]
 
 [tasks.config]

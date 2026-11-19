@@ -43,7 +43,7 @@ abstract final class PathSanitizer {
   }
 
   /// Builds the share-relative remote directory path:
-  /// `{basePath}/{deviceFolder}/{sourceFolder}/{YYYY}/{MM}`
+  /// `{basePath}/{deviceFolder}/{sourceFolder...}/{YYYY}/{MM}`
   static String buildRelativeRemoteDir({
     required String basePath,
     required String deviceFolder,
@@ -52,10 +52,16 @@ abstract final class PathSanitizer {
   }) {
     final yyyy = createdAt.year.toString().padLeft(4, '0');
     final mm = createdAt.month.toString().padLeft(2, '0');
+    final sourceSegments = sourceFolder
+        .replaceAll('\\', '/')
+        .split('/')
+        .where((s) => s.trim().isNotEmpty)
+        .map(sanitizeSourceFolder)
+        .toList();
     final parts = <String>[
       ...basePath.replaceAll('\\', '/').split('/').where((s) => s.trim().isNotEmpty),
       sanitizeDeviceName(deviceFolder),
-      sanitizeSourceFolder(sourceFolder),
+      if (sourceSegments.isEmpty) 'other' else ...sourceSegments,
       yyyy,
       mm,
     ];

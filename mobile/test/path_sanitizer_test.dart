@@ -36,14 +36,30 @@ void main() {
       expect(path, 'local/phone/rodrigo/camera/2025/04');
     });
 
-    test('handles screenshots and leading/trailing slashes', () {
-      final path = PathSanitizer.buildRelativeRemoteDir(
+    test('handles screenshots, nested whatsapp/recordings subpaths, and slashes', () {
+      final ssPath = PathSanitizer.buildRelativeRemoteDir(
         basePath: '/local/phone/',
         deviceFolder: "Alice's phone",
         sourceFolder: 'Screenshots',
         createdAt: DateTime(2023, 11, 5),
       );
-      expect(path, 'local/phone/alice/screenshots/2023/11');
+      expect(ssPath, 'local/phone/alice/screenshots/2023/11');
+
+      final waPath = PathSanitizer.buildRelativeRemoteDir(
+        basePath: 'local/phone',
+        deviceFolder: "Rodrigo's Phone",
+        sourceFolder: 'whatsapp/sent/videos',
+        createdAt: DateTime(2024, 2, 1),
+      );
+      expect(waPath, 'local/phone/rodrigo/whatsapp/sent/videos/2024/02');
+
+      final recPath = PathSanitizer.buildRelativeRemoteDir(
+        basePath: 'local/phone',
+        deviceFolder: 'rodrigo',
+        sourceFolder: 'recordings',
+        createdAt: DateTime(2023, 4, 12),
+      );
+      expect(recPath, 'local/phone/rodrigo/recordings/2023/04');
     });
   });
 

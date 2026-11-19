@@ -5,7 +5,7 @@
 <h1 align="center">UBack (Ultimate Backup)</h1>
 
 <p align="center">
-  Reliable Android backup app for transferring thousands of Camera &amp; Screenshots photos and videos over <strong>SMB2/SMB3</strong> with mandatory full <strong>SHA-256 read-back verification</strong>.
+  Reliable Android backup app for transferring thousands of photos, videos, WhatsApp media, and recorded audios over <strong>SMB2/SMB3</strong> with mandatory full <strong>SHA-256 read-back verification</strong>.
 </p>
 
 See [docs/RELEASE.md](docs/RELEASE.md) for the release process and [AGENTS.md](AGENTS.md) for engineering guidelines.
@@ -17,15 +17,20 @@ See [docs/RELEASE.md](docs/RELEASE.md) for the release process and [AGENTS.md](A
 | ![Home Dark](docs/screenshots/home-dark.png) | ![Home Light](docs/screenshots/home-light.png) | ![Settings Dark](docs/screenshots/settings-dark.png) | ![Settings Light](docs/screenshots/settings-light.png) |
 
 ## Key Features
-- **Extensible Media Sources**: Toggle **Camera** (`DCIM/Camera`) and **Screenshots** (`DCIM/Screenshots` & `Pictures/Screenshots`) directly on the backup screen with live file-count and byte-size estimates (designed via a `MediaSource` interface for future sources like WhatsApp, Documents, etc.).
-- **Destination Layout**: `smb://{host}:{port}/{share}/{base_path}/{device_name}/{camera|screenshots}/{YYYY}/{MM}/{filename}`.
+- **Collapsible Hierarchical Media Sources**: Toggle sources and nested sub-items directly on the backup screen with live file-count and byte-size estimates:
+  - **Camera** (`Images`, `Videos`)
+  - **Screenshots**
+  - **WhatsApp** (`Received` & `Sent` -> `Images`, `Videos`, `Audios & Voice Notes`)
+  - **Recorded Audios** (`Voice Recorder` / `Recordings`)
+- **Extensible Destinations**: Built on an abstract `BackupDestination` interface (`SMB NAS` active now, configurable for additional destinations in `config.toml` and Settings).
+- **Destination Layout**: `smb://{host}:{port}/{share}/{base_path}/{device_name}/{source}/{YYYY}/{MM}/{filename}` (e.g., `.../camera/2025/04/`, `.../whatsapp/sent/videos/2025/04/`, `.../recordings/2025/04/`).
 - **Modes**:
-  - **Copy**: Transfers and verifies files on the NAS, leaving local files untouched.
-  - **Crop (Free Space)**: Verifies every file on the NAS via full SHA-256 read-back before deleting the local file and refreshing Android MediaStore.
-- **Oldest-First & Batch Limits**: Always starts from the oldest files first; optionally limit a run to `All`, `Oldest X files`, or `Oldest X MB`.
-- **High-Volume UX**: Zero media thumbnails or previews — lightweight progress counters (`Transferred`, `Remaining`, `Total`, `Skipped`, `Failed`) running inside an Android Foreground Service.
+  - **Copy**: Transfers and verifies files on the destination, leaving local files untouched.
+  - **Crop (Free Space)**: Verifies every file via full SHA-256 read-back before deleting the local file and refreshing Android MediaStore.
+- **Global Oldest-First & Batch Limits**: Always orders oldest-first across **all** enabled sources combined; optionally limit a run to `All`, `Oldest X files`, or `Oldest X MB`.
+- **High-Volume UX**: Zero media thumbnails or previews — lightweight progress counters (`Transferred`, `Remaining`, `Total`, `Skipped`, `Failed`) with a pinned Android Foreground Service progress notification.
 - **Adaptive System Theme**: Material 3 Light and Dark themes automatically follow your phone's system theme.
-- **Compile-Time Defaults + In-App Settings**: Local gitignored `config.toml` injects default NAS credentials/paths at build time, while Settings lets you edit or override them at runtime (credentials stored with Android secure storage).
+- **Compile-Time Defaults + In-App Settings**: Local gitignored `config.toml` injects default destination settings at build time, while Settings lets you edit or override them at runtime (credentials stored with Android secure storage).
 
 ## Quick Start
 

@@ -15,75 +15,217 @@ class MediaSourceStats {
         fileCount: (map['count'] as num?)?.toInt() ?? 0,
         totalBytes: (map['totalBytes'] as num?)?.toInt() ?? 0,
       );
+
+  MediaSourceStats operator +(MediaSourceStats other) => MediaSourceStats(
+        fileCount: fileCount + other.fileCount,
+        totalBytes: totalBytes + other.totalBytes,
+      );
 }
 
-/// Extensible contract for backup media sources (e.g., Camera, Screenshots,
-/// and future sources such as WhatsApp, Documents, etc.).
+/// Extensible hierarchical contract for backup media sources and sub-items
+/// (e.g., Camera -> Images/Videos, WhatsApp -> Received/Sent -> Images/Videos/Audios,
+/// Screenshots, Recorded Audios, and future sources).
 abstract class MediaSource {
-  /// Stable unique identifier (also persisted in settings), e.g. `"camera"`.
+  /// Stable unique identifier (persisted for leaf nodes), e.g. `"camera.images"`.
   String get id;
 
-  /// Human-readable label displayed in the UI, e.g. `"Camera"`.
+  /// Human-readable label displayed in the UI.
   String get displayName;
 
-  /// Short folder hint shown beneath the title, e.g. `"DCIM/Camera"`.
+  /// Short folder/description hint shown beneath the title.
   String get subtitle;
 
-  /// Remote folder slug under `{base_path}/{device_name}/`, e.g. `"camera"`.
+  /// Remote folder path under `{base_path}/{device_name}/`, e.g. `"whatsapp/sent/videos"`.
   String get destinationSlug;
 
-  /// Discovers items belonging only to this media source (no thumbnails/previews).
-  Future<List<BackupItem>> discoverItems();
+  /// Nested sub-sources (empty for leaf sources).
+  List<MediaSource> get children;
+
+  bool get isGroup => children.isNotEmpty;
+
+  /// All leaf source IDs represented by this node (itself if leaf, else all descendant leaves).
+  Set<String> get leafIds {
+    if (!isGroup) return {id};
+    final out = <String>{};
+    for (final child in children) {
+      out.addAll(child.leafIds);
+    }
+    return out;
+  }
+
+  /// Sums file count and byte size across all descendant leaves.
+  MediaSourceStats aggregateStats(Map<String, MediaSourceStats> leafStats) {
+    var total = const MediaSourceStats();
+    for (final leaf in leafIds) {
+      final stat = leafStats[leaf];
+      if (stat != null) total = total + stat;
+    }
+    return total;
+  }
+
+  /// Tri-state selection value: `true` if all leaves enabled, `false` if none, `null` if partial.
+  bool? selectionState(Set<String> enabledLeafIds) {
+    final leaves = leafIds;
+    final selectedCount = leaves.where(enabledLeafIds.contains).length;
+    if (selectedCount == 0) return false;
+    if (selectedCount == leaves.length) return true;
+    return null;
+  }
+
+  /// Discovers items belonging to this source (no thumbnails/previews).
+  Future<List<BackupItem>> discoverItems({int? perSourceLimit});
 }
 
-/// Camera photos and videos (`DCIM/Camera`).
-class CameraMediaSource implements MediaSource {
+/// Concrete leaf or group media source backed by [NativeBackupBridge].
+class BridgeMediaSource extends MediaSource {
   final NativeBackupBridge _bridge;
+  @override
+  final String id;
+  @override
+  final String displayName;
+  @override
+  final String subtitle;
+  @override
+  final String destinationSlug;
+  @override
+  final List<MediaSource> children;
 
-  CameraMediaSource(this._bridge);
+  BridgeMediaSource({
+    required this._bridge,
+    required this.id,
+    required this.displayName,
+    required this.subtitle,
+    required this.destinationSlug,
+    this.children = const [],
+  });
 
   @override
-  String get id => 'camera';
-
-  @override
-  String get displayName => 'Camera';
-
-  @override
-  String get subtitle => 'DCIM/Camera';
-
-  @override
-  String get destinationSlug => 'camera';
-
-  @override
-  Future<List<BackupItem>> discoverItems() =>
-      _bridge.discoverMedia(enabledSourceIds: {id});
+  Future<List<BackupItem>> discoverItems({int? perSourceLimit}) => _bridge.discoverMedia(
+        enabledSourceIds: leafIds,
+        perSourceLimit: perSourceLimit,
+      );
 }
 
-/// Device screenshots (`DCIM/Screenshots` and `Pictures/Screenshots`).
-class ScreenshotsMediaSource implements MediaSource {
-  final NativeBackupBridge _bridge;
+/// All registered leaf source IDs enabled by default.
+const Set<String> defaultEnabledMediaSourceIds = {
+  'camera.images',
+  'camera.videos',
+  'screenshots',
+  'whatsapp.received.images',
+  'whatsapp.received.videos',
+  'whatsapp.received.audios',
+  'whatsapp.sent.images',
+  'whatsapp.sent.videos',
+  'whatsapp.sent.audios',
+  'recordings',
+};
 
-  ScreenshotsMediaSource(this._bridge);
-
-  @override
-  String get id => 'screenshots';
-
-  @override
-  String get displayName => 'Screenshots';
-
-  @override
-  String get subtitle => 'DCIM & Pictures/Screenshots';
-
-  @override
-  String get destinationSlug => 'screenshots';
-
-  @override
-  Future<List<BackupItem>> discoverItems() =>
-      _bridge.discoverMedia(enabledSourceIds: {id});
-}
-
-/// Default registry of available [MediaSource] implementations.
+/// Default hierarchical registry of supported [MediaSource] trees.
 List<MediaSource> defaultMediaSources(NativeBackupBridge bridge) => [
-      CameraMediaSource(bridge),
-      ScreenshotsMediaSource(bridge),
+      BridgeMediaSource(
+        bridge: bridge,
+        id: 'camera',
+        displayName: 'Camera',
+        subtitle: 'DCIM/Camera',
+        destinationSlug: 'camera',
+        children: [
+          BridgeMediaSource(
+            bridge: bridge,
+            id: 'camera.images',
+            displayName: 'Images',
+            subtitle: 'Camera photos',
+            destinationSlug: 'camera',
+          ),
+          BridgeMediaSource(
+            bridge: bridge,
+            id: 'camera.videos',
+            displayName: 'Videos',
+            subtitle: 'Camera videos',
+            destinationSlug: 'camera',
+          ),
+        ],
+      ),
+      BridgeMediaSource(
+        bridge: bridge,
+        id: 'screenshots',
+        displayName: 'Screenshots',
+        subtitle: 'DCIM & Pictures/Screenshots',
+        destinationSlug: 'screenshots',
+      ),
+      BridgeMediaSource(
+        bridge: bridge,
+        id: 'whatsapp',
+        displayName: 'WhatsApp',
+        subtitle: 'Received & Sent media',
+        destinationSlug: 'whatsapp',
+        children: [
+          BridgeMediaSource(
+            bridge: bridge,
+            id: 'whatsapp.received',
+            displayName: 'Received',
+            subtitle: 'Incoming WhatsApp media',
+            destinationSlug: 'whatsapp/received',
+            children: [
+              BridgeMediaSource(
+                bridge: bridge,
+                id: 'whatsapp.received.images',
+                displayName: 'Images',
+                subtitle: 'WhatsApp Images',
+                destinationSlug: 'whatsapp/received/images',
+              ),
+              BridgeMediaSource(
+                bridge: bridge,
+                id: 'whatsapp.received.videos',
+                displayName: 'Videos',
+                subtitle: 'WhatsApp Video',
+                destinationSlug: 'whatsapp/received/videos',
+              ),
+              BridgeMediaSource(
+                bridge: bridge,
+                id: 'whatsapp.received.audios',
+                displayName: 'Audios & Voice Notes',
+                subtitle: 'WhatsApp Audio & Voice Notes',
+                destinationSlug: 'whatsapp/received/audios',
+              ),
+            ],
+          ),
+          BridgeMediaSource(
+            bridge: bridge,
+            id: 'whatsapp.sent',
+            displayName: 'Sent',
+            subtitle: 'Outgoing WhatsApp media',
+            destinationSlug: 'whatsapp/sent',
+            children: [
+              BridgeMediaSource(
+                bridge: bridge,
+                id: 'whatsapp.sent.images',
+                displayName: 'Images',
+                subtitle: 'WhatsApp Images/Sent',
+                destinationSlug: 'whatsapp/sent/images',
+              ),
+              BridgeMediaSource(
+                bridge: bridge,
+                id: 'whatsapp.sent.videos',
+                displayName: 'Videos',
+                subtitle: 'WhatsApp Video/Sent',
+                destinationSlug: 'whatsapp/sent/videos',
+              ),
+              BridgeMediaSource(
+                bridge: bridge,
+                id: 'whatsapp.sent.audios',
+                displayName: 'Audios',
+                subtitle: 'WhatsApp Audio/Sent',
+                destinationSlug: 'whatsapp/sent/audios',
+              ),
+            ],
+          ),
+        ],
+      ),
+      BridgeMediaSource(
+        bridge: bridge,
+        id: 'recordings',
+        displayName: 'Recorded Audios',
+        subtitle: 'Voice Recorder & Recordings',
+        destinationSlug: 'recordings',
+      ),
     ];

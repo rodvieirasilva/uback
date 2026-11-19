@@ -26,9 +26,13 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     smb: dict[str, object] = {}
+    destination_type = "smb_nas"
     if config_path.exists():
         with config_path.open("rb") as f:
             data = tomllib.load(f)
+        dest_section = data.get("destination", {})
+        if isinstance(dest_section, dict) and dest_section.get("type"):
+            destination_type = str(dest_section["type"])
         smb_section = data.get("smb", {})
         if isinstance(smb_section, dict):
             smb = smb_section
@@ -40,6 +44,7 @@ def main() -> int:
         )
 
     defines = {
+        "UBACK_DESTINATION_TYPE": destination_type,
         "UBACK_SMB_HOST": str(smb.get("host", "")),
         "UBACK_SMB_PORT": str(smb.get("port", 445)),
         "UBACK_SMB_SHARE": str(smb.get("share", "")),

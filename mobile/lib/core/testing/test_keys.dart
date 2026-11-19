@@ -15,7 +15,6 @@ abstract final class AppTestKeys {
   static const String openSettingsId = 'open_settings_btn';
   static const String testConnectionId = 'test_connection_btn';
   static const String connectionStatusBannerId = 'connection_status_banner';
-  static const String destinationPreviewId = 'destination_preview';
   static const String appLogoId = 'app_logo';
   static const String appVersionId = 'app_version_label';
   static const String grantMediaPermId = 'grant_media_perm_btn';
@@ -34,15 +33,19 @@ abstract final class AppTestKeys {
   static const String errorLogBtnId = 'error_log_btn';
   static const String errorLogListId = 'error_log_list';
 
-  // Media source controls on Home screen
+  // Collapsible Media Sources controls on Home screen
+  static const String mediaSourcesCollapseId = 'media_sources_collapse_btn';
   static const String mediaSourcesSummaryId = 'media_sources_summary';
   static const String mediaSourcesEstimatingId = 'media_sources_estimating';
   static String sourceToggleId(String sourceId) => 'source_${sourceId}_toggle';
   static ValueKey<String> sourceToggle(String sourceId) => ValueKey(sourceToggleId(sourceId));
+  static String sourceExpandId(String sourceId) => 'source_${sourceId}_expand';
+  static ValueKey<String> sourceExpand(String sourceId) => ValueKey(sourceExpandId(sourceId));
   static String sourceStatsId(String sourceId) => 'source_${sourceId}_stats';
   static ValueKey<String> sourceStats(String sourceId) => ValueKey(sourceStatsId(sourceId));
 
   // Settings screen controls
+  static const String settingsDestinationTypeId = 'settings_destination_type';
   static const String settingsHostId = 'settings_host_input';
   static const String settingsPortId = 'settings_port_input';
   static const String settingsShareId = 'settings_share_input';
@@ -68,7 +71,6 @@ abstract final class AppTestKeys {
   static const ValueKey<String> openSettings = ValueKey(openSettingsId);
   static const ValueKey<String> testConnection = ValueKey(testConnectionId);
   static const ValueKey<String> connectionStatusBanner = ValueKey(connectionStatusBannerId);
-  static const ValueKey<String> destinationPreview = ValueKey(destinationPreviewId);
   static const ValueKey<String> appLogo = ValueKey(appLogoId);
   static const ValueKey<String> appVersion = ValueKey(appVersionId);
   static const ValueKey<String> grantMediaPerm = ValueKey(grantMediaPermId);
@@ -86,9 +88,11 @@ abstract final class AppTestKeys {
   static const ValueKey<String> errorLogBtn = ValueKey(errorLogBtnId);
   static const ValueKey<String> errorLogList = ValueKey(errorLogListId);
 
+  static const ValueKey<String> mediaSourcesCollapse = ValueKey(mediaSourcesCollapseId);
   static const ValueKey<String> mediaSourcesSummary = ValueKey(mediaSourcesSummaryId);
   static const ValueKey<String> mediaSourcesEstimating = ValueKey(mediaSourcesEstimatingId);
 
+  static const ValueKey<String> settingsDestinationType = ValueKey(settingsDestinationTypeId);
   static const ValueKey<String> settingsHost = ValueKey(settingsHostId);
   static const ValueKey<String> settingsPort = ValueKey(settingsPortId);
   static const ValueKey<String> settingsShare = ValueKey(settingsShareId);

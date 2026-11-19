@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate deterministic synthetic JPEG, PNG, and MP4 test media for Emulator E2E tests."""
+"""Generate deterministic synthetic JPEG, PNG, MP4, OPUS, and M4A test media for Emulator E2E tests."""
 
 from __future__ import annotations
 
@@ -46,6 +46,20 @@ def make_minimal_mp4(tag: bytes, extra_kb: int = 256) -> bytes:
     return ftyp + free_box
 
 
+def make_minimal_m4a(tag: bytes, extra_kb: int = 16) -> bytes:
+    ftyp_body = b"M4A \x00\x00\x00\x00M4A mp42isom"
+    ftyp = struct.pack(">I", len(ftyp_body) + 8) + b"ftyp" + ftyp_body
+    free_body = tag + (b"A" * (extra_kb * 1024))
+    free_box = struct.pack(">I", len(free_body) + 8) + b"free" + free_body
+    return ftyp + free_box
+
+
+def make_minimal_opus(tag: bytes, extra_kb: int = 10) -> bytes:
+    # OggS header + OpusHead payload
+    header = b"OggS\x00\x02" + (b"\x00" * 20) + b"\x01\x13OpusHead\x01\x01\x38\x01\x80\xbb\x00\x00\x00\x00\x00"
+    return header + tag + (b"O" * (extra_kb * 1024))
+
+
 def main() -> int:
     if len(sys.argv) not in (2, 3):
         print(f"Usage: {sys.argv[0]} <seed_dir> [--big-file]", file=sys.stderr)
@@ -57,11 +71,16 @@ def main() -> int:
 
     video_kb = 4096 if big_mode else 256
     files = {
-        "IMG_20230110_090000.jpg": make_minimal_jpeg(b"oldest-cam-1", 12),
-        "Screenshot_20230705_110000.png": make_minimal_png(b"oldest-ss-2", 16),
-        "VID_20240315_120000.mp4": make_minimal_mp4(b"oldest-vid-3", video_kb),
-        "IMG_20250620_180000.jpg": make_minimal_jpeg(b"newest-cam-4", 20),
-        "IMG-20220101-WA0001.jpg": make_minimal_jpeg(b"ignored-whatsapp", 10),
+        # Global oldest -> newest across ALL enabled sources:
+        "PTT-20220501-WA0001.opus": make_minimal_opus(b"oldest-wa-voice-1", 10),
+        "IMG_20230110_090000.jpg": make_minimal_jpeg(b"oldest-cam-img-2", 12),
+        "REC_20230412_100000.m4a": make_minimal_m4a(b"oldest-recording-3", 14),
+        "Screenshot_20230705_110000.png": make_minimal_png(b"oldest-ss-4", 16),
+        "VID-20240201-WA0002.mp4": make_minimal_mp4(b"oldest-wa-sent-vid-5", 32),
+        "VID_20240315_120000.mp4": make_minimal_mp4(b"oldest-cam-vid-6", video_kb),
+        "IMG-20250620-WA0003.jpg": make_minimal_jpeg(b"newest-wa-recv-img-7", 20),
+        # Untracked folder (Download) — MUST NOT be backed up or deleted
+        "random_download.jpg": make_minimal_jpeg(b"ignored-download", 10),
     }
 
     for name, content in files.items():

@@ -26,27 +26,36 @@ class ProgressDashboard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                withTestId(
-                  AppTestKeys.statusStateId,
-                  child: Text(
-                    _stateLabel(progress.state),
-                    key: AppTestKeys.statusState,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                Expanded(
+                  child: withTestId(
+                    AppTestKeys.statusStateId,
+                    child: Text(
+                      _stateLabel(progress.state),
+                      key: AppTestKeys.statusState,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
                   ),
                 ),
-                withTestId(
-                  AppTestKeys.statusStageId,
-                  child: Text(
-                    progress.stage.toUpperCase(),
-                    key: AppTestKeys.statusStage,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: cs.primary,
-                          letterSpacing: 1.0,
-                        ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: withTestId(
+                    AppTestKeys.statusStageId,
+                    child: Text(
+                      progress.stage.toUpperCase(),
+                      key: AppTestKeys.statusStage,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: cs.primary,
+                            letterSpacing: 1.0,
+                          ),
+                    ),
                   ),
                 ),
               ],
@@ -198,6 +207,8 @@ class _StatCounter extends StatelessWidget {
         ),
         Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),

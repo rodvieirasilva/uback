@@ -1,11 +1,15 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../backup/backup_destination.dart';
+import '../backup/media_source.dart';
 import '../utils/path_sanitizer.dart';
 
 /// Compile-time defaults injected via `--dart-define-from-file=dart_defines.json`
 /// generated from local (gitignored) `config.toml`.
 class CompileTimeDefaults {
+  static const String destinationType =
+      String.fromEnvironment('UBACK_DESTINATION_TYPE', defaultValue: SmbNasDestination.typeId);
   static const String host = String.fromEnvironment('UBACK_SMB_HOST', defaultValue: '');
   static const String portStr = String.fromEnvironment('UBACK_SMB_PORT', defaultValue: '445');
   static const String share = String.fromEnvironment('UBACK_SMB_SHARE', defaultValue: '');
@@ -16,10 +20,11 @@ class CompileTimeDefaults {
   static const String e2eDeviceOverride =
       String.fromEnvironment('UBACK_E2E_DEVICE_OVERRIDE', defaultValue: '');
   static const String appVersion =
-      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.0.0+1');
+      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.1.0+2');
 
   static AppSettings toSettings() {
     return AppSettings(
+      destinationType: destinationType.isEmpty ? SmbNasDestination.typeId : destinationType,
       host: host,
       port: int.tryParse(portStr) ?? 445,
       share: share,
@@ -28,12 +33,13 @@ class CompileTimeDefaults {
       password: password,
       domain: domain,
       deviceFolderOverride: e2eDeviceOverride,
-      enabledSourceIds: const {'camera', 'screenshots'},
+      enabledSourceIds: defaultEnabledMediaSourceIds,
     );
   }
 }
 
 class AppSettings {
+  final String destinationType;
   final String host;
   final int port;
   final String share;
@@ -45,6 +51,7 @@ class AppSettings {
   final Set<String> enabledSourceIds;
 
   const AppSettings({
+    this.destinationType = SmbNasDestination.typeId,
     required this.host,
     required this.port,
     required this.share,
@@ -53,7 +60,7 @@ class AppSettings {
     required this.password,
     required this.domain,
     required this.deviceFolderOverride,
-    this.enabledSourceIds = const {'camera', 'screenshots'},
+    this.enabledSourceIds = defaultEnabledMediaSourceIds,
   });
 
   bool isSourceEnabled(String sourceId) => enabledSourceIds.contains(sourceId);
@@ -67,21 +74,6 @@ class AppSettings {
     return PathSanitizer.sanitizeDeviceName(raw);
   }
 
-  String destinationPreview(String detectedDeviceName) {
-    final h = host.trim().isEmpty ? '<host>' : host.trim();
-    final s = share.trim().isEmpty ? '<share>' : share.trim();
-    final b = basePath.trim().replaceAll('\\', '/').replaceAll(RegExp(r'^/+|/+$'), '');
-    final d = resolvedDeviceFolder(detectedDeviceName);
-    final prefix = b.isEmpty ? 'smb://$h:$port/$s/$d' : 'smb://$h:$port/$s/$b/$d';
-    final sortedSources = enabledSourceIds.toList()..sort();
-    final sourceSeg = switch (sortedSources.length) {
-      0 => '<select-source>',
-      1 => sortedSources.first,
-      _ => '{${sortedSources.join('|')}}',
-    };
-    return '$prefix/$sourceSeg/YYYY/MM';
-  }
-
   Map<String, dynamic> toSmbMap() => {
         'host': host.trim(),
         'port': port,
@@ -93,6 +85,7 @@ class AppSettings {
       };
 
   AppSettings copyWith({
+    String? destinationType,
     String? host,
     int? port,
     String? share,
@@ -104,6 +97,7 @@ class AppSettings {
     Set<String>? enabledSourceIds,
   }) {
     return AppSettings(
+      destinationType: destinationType ?? this.destinationType,
       host: host ?? this.host,
       port: port ?? this.port,
       share: share ?? this.share,
@@ -174,6 +168,7 @@ class InMemoryKeyValueStore implements KeyValueStore {
 
 /// Manages runtime settings persistence with fallback to compile-time defaults.
 class AppSettingsRepository {
+  static const _kDestinationType = 'uback_destination_type';
   static const _kHost = 'uback_smb_host';
   static const _kPort = 'uback_smb_port';
   static const _kShare = 'uback_smb_share';
@@ -199,7 +194,21 @@ class AppSettingsRepository {
 
   AppSettings get compileTimeDefaults => _defaults;
 
+  static Set<String> _migrateLegacySources(Set<String> raw) {
+    final migrated = <String>{};
+    for (final id in raw) {
+      if (id == 'camera') {
+        migrated.add('camera.images');
+        migrated.add('camera.videos');
+      } else {
+        migrated.add(id);
+      }
+    }
+    return migrated;
+  }
+
   Future<AppSettings> load() async {
+    final destinationType = await _plainStore.read(_kDestinationType);
     final host = await _plainStore.read(_kHost);
     final portStr = await _plainStore.read(_kPort);
     final share = await _plainStore.read(_kShare);
@@ -209,11 +218,13 @@ class AppSettingsRepository {
     final enabledSourcesRaw = await _plainStore.read(_kEnabledSources);
 
     final enabledSourceIds = enabledSourcesRaw != null
-        ? enabledSourcesRaw
-            .split(',')
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toSet()
+        ? _migrateLegacySources(
+            enabledSourcesRaw
+                .split(',')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toSet(),
+          )
         : _defaults.enabledSourceIds;
 
     String? username;
@@ -226,6 +237,7 @@ class AppSettingsRepository {
     }
 
     return AppSettings(
+      destinationType: destinationType ?? _defaults.destinationType,
       host: host ?? _defaults.host,
       port: int.tryParse(portStr ?? '') ?? _defaults.port,
       share: share ?? _defaults.share,
@@ -239,6 +251,7 @@ class AppSettingsRepository {
   }
 
   Future<void> save(AppSettings settings) async {
+    await _plainStore.write(_kDestinationType, settings.destinationType);
     await _plainStore.write(_kHost, settings.host.trim());
     await _plainStore.write(_kPort, settings.port.toString());
     await _plainStore.write(_kShare, settings.share.trim());
@@ -254,6 +267,7 @@ class AppSettingsRepository {
 
   Future<AppSettings> resetToDefaults() async {
     for (final key in [
+      _kDestinationType,
       _kHost,
       _kPort,
       _kShare,

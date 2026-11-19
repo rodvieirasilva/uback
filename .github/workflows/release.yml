@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g., v1.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Verify, Build & Publish Release APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+          cache: true
+
+      - name: Resolve and validate release tag against mobile/pubspec.yaml
+        id: version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          PUBSPEC_VER="$(python3 -c "from pathlib import Path; import sys; sys.path.insert(0, 'scripts'); import parse_config; print(parse_config.read_pubspec_version(Path('.')))")"
+          SEMVER="${PUBSPEC_VER%%+*}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "pubspec=$PUBSPEC_VER" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" != "v$SEMVER" ]]; then
+            echo "ERROR: Tag '$TAG' does not match mobile/pubspec.yaml version 'v$SEMVER' ($PUBSPEC_VER)" >&2
+            exit 1
+          fi
+
+      - name: Verify clean working tree (no secret config files)
+        run: |
+          if [[ -f config.toml || -f mobile/dart_defines.json ]]; then
+            echo "ERROR: Secret config files must never exist in Release CI!" >&2
+            exit 1
+          fi
+
+      - name: Install Flutter dependencies & run static checks + unit/widget tests
+        run: |
+          (cd mobile && mise exec -- flutter pub get)
+          mise run analyze
+          mise run test
+
+      - name: Ensure Android SDK 36 & licenses
+        run: |
+          SDK_MGR="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDK_MGR" --licenses >/dev/null 2>&1 || true
+          "$SDK_MGR" --install "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build clean Release APK (zero baked secrets)
+        run: mise run build-release
+
+      - name: Prepare versioned APK & SHA-256 checksum
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          mkdir -p dist
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "dist/uback-${TAG}.apk"
+          (cd dist && sha256sum "uback-${TAG}.apk" > "uback-${TAG}.apk.sha256")
+          cat "dist/uback-${TAG}.apk.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          gh release create "$TAG" \
+            "dist/uback-${TAG}.apk" \
+            "dist/uback-${TAG}.apk.sha256" \
+            --title "UBack ${TAG}" \
+            --generate-notes
