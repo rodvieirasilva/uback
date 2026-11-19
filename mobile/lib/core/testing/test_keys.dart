@@ -34,6 +34,14 @@ abstract final class AppTestKeys {
   static const String errorLogBtnId = 'error_log_btn';
   static const String errorLogListId = 'error_log_list';
 
+  // Media source controls on Home screen
+  static const String mediaSourcesSummaryId = 'media_sources_summary';
+  static const String mediaSourcesEstimatingId = 'media_sources_estimating';
+  static String sourceToggleId(String sourceId) => 'source_${sourceId}_toggle';
+  static ValueKey<String> sourceToggle(String sourceId) => ValueKey(sourceToggleId(sourceId));
+  static String sourceStatsId(String sourceId) => 'source_${sourceId}_stats';
+  static ValueKey<String> sourceStats(String sourceId) => ValueKey(sourceStatsId(sourceId));
+
   // Settings screen controls
   static const String settingsHostId = 'settings_host_input';
   static const String settingsPortId = 'settings_port_input';
@@ -43,8 +51,6 @@ abstract final class AppTestKeys {
   static const String settingsPasswordId = 'settings_password_input';
   static const String settingsDomainId = 'settings_domain_input';
   static const String settingsDeviceOverrideId = 'settings_device_override_input';
-  static const String settingsSourceCameraId = 'settings_source_camera_toggle';
-  static const String settingsSourceScreenshotsId = 'settings_source_screenshots_toggle';
   static const String settingsSaveId = 'settings_save_btn';
   static const String settingsResetDefaultsId = 'settings_reset_defaults_btn';
   static const String settingsTestConnectionId = 'settings_test_connection_btn';
@@ -80,6 +86,9 @@ abstract final class AppTestKeys {
   static const ValueKey<String> errorLogBtn = ValueKey(errorLogBtnId);
   static const ValueKey<String> errorLogList = ValueKey(errorLogListId);
 
+  static const ValueKey<String> mediaSourcesSummary = ValueKey(mediaSourcesSummaryId);
+  static const ValueKey<String> mediaSourcesEstimating = ValueKey(mediaSourcesEstimatingId);
+
   static const ValueKey<String> settingsHost = ValueKey(settingsHostId);
   static const ValueKey<String> settingsPort = ValueKey(settingsPortId);
   static const ValueKey<String> settingsShare = ValueKey(settingsShareId);
@@ -88,8 +97,6 @@ abstract final class AppTestKeys {
   static const ValueKey<String> settingsPassword = ValueKey(settingsPasswordId);
   static const ValueKey<String> settingsDomain = ValueKey(settingsDomainId);
   static const ValueKey<String> settingsDeviceOverride = ValueKey(settingsDeviceOverrideId);
-  static const ValueKey<String> settingsSourceCamera = ValueKey(settingsSourceCameraId);
-  static const ValueKey<String> settingsSourceScreenshots = ValueKey(settingsSourceScreenshotsId);
   static const ValueKey<String> settingsSave = ValueKey(settingsSaveId);
   static const ValueKey<String> settingsResetDefaults = ValueKey(settingsResetDefaultsId);
   static const ValueKey<String> settingsTestConnection = ValueKey(settingsTestConnectionId);

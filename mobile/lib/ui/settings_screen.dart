@@ -27,8 +27,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _domainCtrl;
   late final TextEditingController _deviceOverrideCtrl;
 
-  late bool _includeCamera;
-  late bool _includeScreenshots;
   bool _obscurePassword = true;
 
   @override
@@ -43,9 +41,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _passwordCtrl = TextEditingController(text: s.password);
     _domainCtrl = TextEditingController(text: s.domain);
     _deviceOverrideCtrl = TextEditingController(text: s.deviceFolderOverride);
-    _includeCamera = s.includeCamera;
-    _includeScreenshots = s.includeScreenshots;
-    widget.controller.refreshSourceCounts();
   }
 
   @override
@@ -61,7 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  AppSettings _collectSettings() => AppSettings(
+  AppSettings _collectSettings() => widget.controller.settings.copyWith(
         host: _hostCtrl.text.trim(),
         port: int.tryParse(_portCtrl.text.trim()) ?? 445,
         share: _shareCtrl.text.trim(),
@@ -70,8 +65,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         password: _passwordCtrl.text,
         domain: _domainCtrl.text.trim(),
         deviceFolderOverride: _deviceOverrideCtrl.text.trim(),
-        includeCamera: _includeCamera,
-        includeScreenshots: _includeScreenshots,
       );
 
   void _applySettings(AppSettings s) {
@@ -83,10 +76,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _passwordCtrl.text = s.password;
     _domainCtrl.text = s.domain;
     _deviceOverrideCtrl.text = s.deviceFolderOverride;
-    setState(() {
-      _includeCamera = s.includeCamera;
-      _includeScreenshots = s.includeScreenshots;
-    });
   }
 
   Future<void> _save() async {
@@ -112,7 +101,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context, _) {
         final ctrl = widget.controller;
         final autoDevice = PathSanitizer.sanitizeDeviceName(ctrl.detectedDeviceName);
-        final counts = ctrl.sourceCounts;
 
         return Scaffold(
           appBar: AppBar(
@@ -277,14 +265,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ConnectionBanner(result: ctrl.connectionResult!),
                 ],
                 const SizedBox(height: 24),
-                SettingsSourcesSection(
-                  includeCamera: _includeCamera,
-                  includeScreenshots: _includeScreenshots,
-                  cameraCount: counts['camera'] ?? 0,
-                  screenshotsCount: counts['screenshots'] ?? 0,
+                SettingsPermissionsSection(
                   hasAllFiles: ctrl.permissions.hasAllFiles,
-                  onCameraChanged: (v) => setState(() => _includeCamera = v),
-                  onScreenshotsChanged: (v) => setState(() => _includeScreenshots = v),
                   onOpenAllFilesAccess: ctrl.openAllFilesAccessSettings,
                 ),
                 const SizedBox(height: 20),

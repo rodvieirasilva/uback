@@ -6,11 +6,13 @@ import '../config/app_config.dart';
 import 'backup_planner.dart';
 import 'image_video_media_exporter.dart';
 import 'media_exporter.dart';
+import 'media_source.dart';
 import 'native_bridge.dart';
 
 class BackupController extends ChangeNotifier {
   final AppSettingsRepository _settingsRepo;
   final NativeBackupBridge _bridge;
+  late final List<MediaSource> _mediaSources;
   late final ImageVideoMediaExporter _exporter;
 
   StreamSubscription<BackupProgress>? _progressSub;
@@ -19,7 +21,9 @@ class BackupController extends ChangeNotifier {
   String _detectedDeviceName = 'android';
   String _appVersion = CompileTimeDefaults.appVersion;
   PermissionState _permissions = const PermissionState();
-  Map<String, int> _sourceCounts = const {'camera': 0, 'screenshots': 0};
+  Map<String, MediaSourceStats> _sourceStats = const {};
+  bool _estimatingStats = false;
+  bool _hasEstimatedStats = false;
   BackupMode _mode = BackupMode.copy;
   BackupLimitType _limitType = BackupLimitType.all;
   int _limitValue = 100;
@@ -32,7 +36,9 @@ class BackupController extends ChangeNotifier {
   BackupController({
     required this._settingsRepo,
     required this._bridge,
+    List<MediaSource>? mediaSources,
   }) {
+    _mediaSources = List.unmodifiable(mediaSources ?? defaultMediaSources(_bridge));
     _exporter = ImageVideoMediaExporter(
       bridge: _bridge,
       settingsProvider: () => _settings,
@@ -41,12 +47,15 @@ class BackupController extends ChangeNotifier {
   }
 
   AppSettings get settings => _settings;
+  List<MediaSource> get mediaSources => _mediaSources;
   String get detectedDeviceName => _detectedDeviceName;
   String get appVersion => _appVersion;
   String get resolvedDeviceFolder => _settings.resolvedDeviceFolder(_detectedDeviceName);
   String get destinationPreview => _settings.destinationPreview(_detectedDeviceName);
   PermissionState get permissions => _permissions;
-  Map<String, int> get sourceCounts => _sourceCounts;
+  Map<String, MediaSourceStats> get sourceStats => _sourceStats;
+  bool get estimatingStats => _estimatingStats;
+  bool get hasEstimatedStats => _hasEstimatedStats;
   BackupMode get mode => _mode;
   BackupLimitType get limitType => _limitType;
   int get limitValue => _limitValue;
@@ -56,6 +65,26 @@ class BackupController extends ChangeNotifier {
   bool get initialized => _initialized;
   String? get statusMessage => _statusMessage;
   MediaExporter get exporter => _exporter;
+
+  int get selectedFileCount {
+    var total = 0;
+    for (final src in _mediaSources) {
+      if (_settings.isSourceEnabled(src.id)) {
+        total += _sourceStats[src.id]?.fileCount ?? 0;
+      }
+    }
+    return total;
+  }
+
+  int get selectedTotalBytes {
+    var total = 0;
+    for (final src in _mediaSources) {
+      if (_settings.isSourceEnabled(src.id)) {
+        total += _sourceStats[src.id]?.totalBytes ?? 0;
+      }
+    }
+    return total;
+  }
 
   BackupLimit? get currentLimit {
     return switch (_limitType) {
@@ -92,7 +121,7 @@ class BackupController extends ChangeNotifier {
       if (event.state == BackupRunState.completed ||
           event.state == BackupRunState.cancelled ||
           event.state == BackupRunState.error) {
-        refreshSourceCounts();
+        refreshSourceStats();
       }
     });
 
@@ -100,7 +129,7 @@ class BackupController extends ChangeNotifier {
     notifyListeners();
 
     if (_permissions.hasMedia) {
-      await refreshSourceCounts();
+      unawaited(refreshSourceStats());
     }
   }
 
@@ -109,6 +138,20 @@ class BackupController extends ChangeNotifier {
     _mode = mode;
     _statusMessage = null;
     notifyListeners();
+  }
+
+  Future<void> toggleSource(String sourceId, bool enabled) async {
+    if (_progress.isActive) return;
+    final next = Set<String>.of(_settings.enabledSourceIds);
+    if (enabled) {
+      next.add(sourceId);
+    } else {
+      next.remove(sourceId);
+    }
+    _settings = _settings.copyWith(enabledSourceIds: next);
+    _statusMessage = null;
+    notifyListeners();
+    await _settingsRepo.save(_settings);
   }
 
   void setLimitType(BackupLimitType type) {
@@ -132,7 +175,7 @@ class BackupController extends ChangeNotifier {
     _permissions = await _bridge.checkPermissions();
     notifyListeners();
     if (_permissions.hasMedia) {
-      await refreshSourceCounts();
+      unawaited(refreshSourceStats());
     }
   }
 
@@ -140,7 +183,7 @@ class BackupController extends ChangeNotifier {
     _permissions = await _bridge.requestMediaPermissions();
     notifyListeners();
     if (_permissions.hasMedia) {
-      await refreshSourceCounts();
+      unawaited(refreshSourceStats());
     }
   }
 
@@ -148,11 +191,19 @@ class BackupController extends ChangeNotifier {
     await _bridge.openAllFilesAccessSettings();
   }
 
-  Future<void> refreshSourceCounts() async {
+  Future<void> refreshSourceStats() async {
+    if (_estimatingStats) return;
+    _estimatingStats = true;
+    notifyListeners();
     try {
-      _sourceCounts = await _bridge.getSourceCounts();
+      _sourceStats = await _bridge.getSourceStats();
+      _hasEstimatedStats = true;
+    } catch (_) {
+      // Keep previous estimate if query fails transiently.
+    } finally {
+      _estimatingStats = false;
       notifyListeners();
-    } catch (_) {}
+    }
   }
 
   Future<void> saveSettings(AppSettings updated) async {
@@ -209,8 +260,8 @@ class BackupController extends ChangeNotifier {
       return;
     }
 
-    if (!_settings.includeCamera && !_settings.includeScreenshots) {
-      _statusMessage = 'Enable at least one source (Camera or Screenshots) in Settings.';
+    if (_settings.enabledSourceIds.isEmpty) {
+      _statusMessage = 'Enable at least one media source before starting backup.';
       notifyListeners();
       return;
     }
@@ -219,7 +270,7 @@ class BackupController extends ChangeNotifier {
     if (!_permissions.hasMedia) {
       _permissions = await _bridge.requestMediaPermissions();
       if (!_permissions.hasMedia) {
-        _statusMessage = 'Media permission is required to scan Camera & Screenshots.';
+        _statusMessage = 'Media permission is required to scan your selected sources.';
         notifyListeners();
         return;
       }
@@ -254,7 +305,7 @@ class BackupController extends ChangeNotifier {
           bytesTransferred: 0,
           totalBytes: 0,
         );
-        _statusMessage = 'No Camera or Screenshots media found to back up.';
+        _statusMessage = 'No files found in the selected media sources.';
         notifyListeners();
         return;
       }

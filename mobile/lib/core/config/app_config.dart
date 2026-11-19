@@ -28,8 +28,7 @@ class CompileTimeDefaults {
       password: password,
       domain: domain,
       deviceFolderOverride: e2eDeviceOverride,
-      includeCamera: true,
-      includeScreenshots: true,
+      enabledSourceIds: const {'camera', 'screenshots'},
     );
   }
 }
@@ -43,8 +42,7 @@ class AppSettings {
   final String password;
   final String domain;
   final String deviceFolderOverride;
-  final bool includeCamera;
-  final bool includeScreenshots;
+  final Set<String> enabledSourceIds;
 
   const AppSettings({
     required this.host,
@@ -55,9 +53,10 @@ class AppSettings {
     required this.password,
     required this.domain,
     required this.deviceFolderOverride,
-    required this.includeCamera,
-    required this.includeScreenshots,
+    this.enabledSourceIds = const {'camera', 'screenshots'},
   });
+
+  bool isSourceEnabled(String sourceId) => enabledSourceIds.contains(sourceId);
 
   bool get isConfigured => host.trim().isNotEmpty && share.trim().isNotEmpty;
 
@@ -74,7 +73,13 @@ class AppSettings {
     final b = basePath.trim().replaceAll('\\', '/').replaceAll(RegExp(r'^/+|/+$'), '');
     final d = resolvedDeviceFolder(detectedDeviceName);
     final prefix = b.isEmpty ? 'smb://$h:$port/$s/$d' : 'smb://$h:$port/$s/$b/$d';
-    return '$prefix/{camera|screenshots}/YYYY/MM';
+    final sortedSources = enabledSourceIds.toList()..sort();
+    final sourceSeg = switch (sortedSources.length) {
+      0 => '<select-source>',
+      1 => sortedSources.first,
+      _ => '{${sortedSources.join('|')}}',
+    };
+    return '$prefix/$sourceSeg/YYYY/MM';
   }
 
   Map<String, dynamic> toSmbMap() => {
@@ -96,8 +101,7 @@ class AppSettings {
     String? password,
     String? domain,
     String? deviceFolderOverride,
-    bool? includeCamera,
-    bool? includeScreenshots,
+    Set<String>? enabledSourceIds,
   }) {
     return AppSettings(
       host: host ?? this.host,
@@ -108,8 +112,7 @@ class AppSettings {
       password: password ?? this.password,
       domain: domain ?? this.domain,
       deviceFolderOverride: deviceFolderOverride ?? this.deviceFolderOverride,
-      includeCamera: includeCamera ?? this.includeCamera,
-      includeScreenshots: includeScreenshots ?? this.includeScreenshots,
+      enabledSourceIds: enabledSourceIds ?? this.enabledSourceIds,
     );
   }
 }
@@ -177,8 +180,7 @@ class AppSettingsRepository {
   static const _kBasePath = 'uback_smb_base_path';
   static const _kDomain = 'uback_smb_domain';
   static const _kDeviceOverride = 'uback_device_override';
-  static const _kIncludeCamera = 'uback_include_camera';
-  static const _kIncludeScreenshots = 'uback_include_screenshots';
+  static const _kEnabledSources = 'uback_enabled_sources';
 
   static const _kSecretUser = 'uback_smb_username';
   static const _kSecretPass = 'uback_smb_password';
@@ -204,8 +206,15 @@ class AppSettingsRepository {
     final basePath = await _plainStore.read(_kBasePath);
     final domain = await _plainStore.read(_kDomain);
     final deviceOverride = await _plainStore.read(_kDeviceOverride);
-    final includeCam = await _plainStore.read(_kIncludeCamera);
-    final includeSs = await _plainStore.read(_kIncludeScreenshots);
+    final enabledSourcesRaw = await _plainStore.read(_kEnabledSources);
+
+    final enabledSourceIds = enabledSourcesRaw != null
+        ? enabledSourcesRaw
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toSet()
+        : _defaults.enabledSourceIds;
 
     String? username;
     String? password;
@@ -225,8 +234,7 @@ class AppSettingsRepository {
       password: password ?? _defaults.password,
       domain: domain ?? _defaults.domain,
       deviceFolderOverride: deviceOverride ?? _defaults.deviceFolderOverride,
-      includeCamera: includeCam != null ? includeCam == 'true' : _defaults.includeCamera,
-      includeScreenshots: includeSs != null ? includeSs == 'true' : _defaults.includeScreenshots,
+      enabledSourceIds: enabledSourceIds,
     );
   }
 
@@ -237,8 +245,8 @@ class AppSettingsRepository {
     await _plainStore.write(_kBasePath, settings.basePath.trim());
     await _plainStore.write(_kDomain, settings.domain.trim());
     await _plainStore.write(_kDeviceOverride, settings.deviceFolderOverride.trim());
-    await _plainStore.write(_kIncludeCamera, settings.includeCamera.toString());
-    await _plainStore.write(_kIncludeScreenshots, settings.includeScreenshots.toString());
+    final sortedSources = settings.enabledSourceIds.toList()..sort();
+    await _plainStore.write(_kEnabledSources, sortedSources.join(','));
 
     await _secureStore.write(_kSecretUser, settings.username.trim());
     await _secureStore.write(_kSecretPass, settings.password);
@@ -252,8 +260,7 @@ class AppSettingsRepository {
       _kBasePath,
       _kDomain,
       _kDeviceOverride,
-      _kIncludeCamera,
-      _kIncludeScreenshots,
+      _kEnabledSources,
     ]) {
       await _plainStore.delete(key);
     }

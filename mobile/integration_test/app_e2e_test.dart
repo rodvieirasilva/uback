@@ -28,11 +28,22 @@ void main() {
     await tester.pumpWidget(const UBackApp());
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    // Verify app logo + version label exist, and zero media file previews are rendered
+    // Verify app logo + version label exist, zero media file previews, and MediaSource toggles visible on Home
     expect(find.byKey(AppTestKeys.appLogo), findsOneWidget);
     expect(find.byKey(AppTestKeys.appVersion), findsOneWidget);
+    expect(find.byKey(AppTestKeys.sourceToggle('camera')), findsOneWidget);
+    expect(find.byKey(AppTestKeys.sourceToggle('screenshots')), findsOneWidget);
+    expect(find.textContaining('PHASE'), findsNothing);
+    expect(find.textContaining('Phase'), findsNothing);
     final fileImages = find.byWidgetPredicate((w) => w is Image && w.image is FileImage);
     expect(fileImages, findsNothing);
+
+    // Verify live MediaSource size estimate reflects the 4 seeded Camera + Screenshots files
+    expect(find.byKey(AppTestKeys.mediaSourcesSummary), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(AppTestKeys.mediaSourcesSummary)).data,
+      contains('Selected: 4 files'),
+    );
 
     // 1. Open Settings -> confirm compile-time defaults loaded -> Test Connection against real SMB2 server
     await tester.tap(find.byKey(AppTestKeys.openSettings));

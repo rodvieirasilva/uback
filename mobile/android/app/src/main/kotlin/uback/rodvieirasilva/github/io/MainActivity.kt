@@ -97,15 +97,17 @@ class MainActivity : FlutterActivity() {
             }
 
             "discoverMedia" -> {
-                val includeCamera = call.argument<Boolean>("includeCamera") ?: true
-                val includeScreenshots = call.argument<Boolean>("includeScreenshots") ?: true
+                val rawSources = call.argument<List<*>>("enabledSources")
+                val enabledSources = rawSources
+                    ?.mapNotNull { it as? String }
+                    ?.toSet()
+                    ?: setOf("camera", "screenshots")
                 scope.launch {
                     try {
                         val items = withContext(Dispatchers.IO) {
                             MediaDiscovery.discover(
                                 context = applicationContext,
-                                includeCamera = includeCamera,
-                                includeScreenshots = includeScreenshots,
+                                enabledSources = enabledSources,
                             ).map { it.toMap() }
                         }
                         result.success(items)
@@ -115,15 +117,15 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-            "getSourceCounts" -> {
+            "getSourceStats" -> {
                 scope.launch {
                     try {
-                        val counts = withContext(Dispatchers.IO) {
-                            MediaDiscovery.getSourceCounts(applicationContext)
+                        val stats = withContext(Dispatchers.IO) {
+                            MediaDiscovery.getSourceStats(applicationContext)
                         }
-                        result.success(counts)
+                        result.success(stats)
                     } catch (e: Throwable) {
-                        result.error("COUNTS_ERROR", e.message, null)
+                        result.error("STATS_ERROR", e.message, null)
                     }
                 }
             }

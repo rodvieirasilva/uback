@@ -16,8 +16,8 @@ See [docs/RELEASE.md](docs/RELEASE.md) for the release process and [AGENTS.md](A
 | :---: | :---: | :---: | :---: |
 | ![Home Dark](docs/screenshots/home-dark.png) | ![Home Light](docs/screenshots/home-light.png) | ![Settings Dark](docs/screenshots/settings-dark.png) | ![Settings Light](docs/screenshots/settings-light.png) |
 
-## Key Features (Phase 1)
-- **Sources**: Camera (`DCIM/Camera`) and Screenshots (`DCIM/Screenshots` & `Pictures/Screenshots`) only — WhatsApp and other third-party folders are excluded.
+## Key Features
+- **Extensible Media Sources**: Toggle **Camera** (`DCIM/Camera`) and **Screenshots** (`DCIM/Screenshots` & `Pictures/Screenshots`) directly on the backup screen with live file-count and byte-size estimates (designed via a `MediaSource` interface for future sources like WhatsApp, Documents, etc.).
 - **Destination Layout**: `smb://{host}:{port}/{share}/{base_path}/{device_name}/{camera|screenshots}/{YYYY}/{MM}/{filename}`.
 - **Modes**:
   - **Copy**: Transfers and verifies files on the NAS, leaving local files untouched.
