@@ -10,7 +10,7 @@ This document details the specifications for the **UBack (Ultimate Backup)** mob
 - **Project Location**: `/mobile` directory inside the `uback` repository (managed with `mise` at the repository root).
 - **Package Name**: `uback.rodvieirasilva.github.io` (kept modular/configurable for easy future renaming).
 - **Initial Scope (Phase 1)**: **Images and Videos only**. The architecture must remain extensible via abstract interfaces for future media types (e.g., WhatsApp, Documents, SMS).
-- **Primary Goal**: Reliably copy or move thousands of photos and videos from the phone's internal storage to a remote NAS share (`{base_path}/{device_name}/media`, e.g., `N:\safe\local\phone\{device_name}\media`) over **SMB**, with strict post-transfer verification.
+- **Primary Goal**: Reliably copy or move thousands of photos and videos from the phone's internal storage to a remote NAS share (`{base_path}/{device_name}/{source}/{YYYY}/{MM}/{filename}`, e.g., `N:\safe\local\phone\{device_name}\camera\2025\04\...`, `...\screenshots\...`, `...\whatsapp-images\...`) over **SMB**, with strict post-transfer verification.
 
 ---
 
@@ -52,10 +52,22 @@ The destination subdirectory adapts automatically to the device running the app.
 - **Examples**:
   - `"Alice's Phone"` -> `alice`
   - `"Rodrigo's phone"` -> `rodrigo`
+- **Source Folder (`{source}`) Sanitization Rules** (derived from Android MediaStore `BUCKET_DISPLAY_NAME`, falling back to parent directory name or `other`):
+  - Trim whitespace and convert to lowercase.
+  - Replace spaces and runs of separators with `-` (stripping any invalid filesystem/SMB path characters).
+  - Examples:
+    - `"Camera"` (`DCIM/Camera`) -> `camera`
+    - `"Screenshots"` (`DCIM/Screenshots`) -> `screenshots`
+    - `"WhatsApp Images"` -> `whatsapp-images`
+    - `"WhatsApp Video"` -> `whatsapp-video`
+    - `"Download"` -> `download`
 - **Target Path**:
-  - `smb://{host}:{port}/{share}/{base_path}/{device_name}/media/{YYYY}/{MM}/{filename}`
-  - Files are organized into `YYYY/MM` subfolders based on each file's `createdAt` timestamp (faster SMB directory listings and cleaner browsing for thousands of files).
-  - Example: `smb://192.168.1.100:445/safe/local/phone/rodrigo/media/2025/04/IMG_20250412_143022.jpg`
+  - `smb://{host}:{port}/{share}/{base_path}/{device_name}/{source}/{YYYY}/{MM}/{filename}`
+  - Files are grouped right under `{device_name}` by where they came from (`{source}`), then into `YYYY/MM` subfolders based on each file's `createdAt` timestamp (faster SMB directory listings and cleaner browsing for thousands of files).
+  - Examples:
+    - `smb://192.168.1.100:445/safe/local/phone/rodrigo/camera/2025/04/IMG_20250412_143022.jpg`
+    - `smb://192.168.1.100:445/safe/local/phone/rodrigo/screenshots/2025/04/Screenshot_20250412.png`
+    - `smb://192.168.1.100:445/safe/local/phone/rodrigo/whatsapp-images/2025/04/IMG-20250412-WA0001.jpg`
 - If the OS cannot provide a readable user-assigned device name, fall back to the sanitized device model and allow overriding it in Settings.
 - Preserve the original file's `lastModified` timestamp on the NAS where supported by the SMB server.
 
@@ -122,8 +134,8 @@ SMB over mobile Wi-Fi can silently truncate files, drop sockets mid-stream, or l
 For each `BackupItem`:
 1. **Local Hash Calculation**: Compute the file's **SHA-256** checksum and exact byte size by streaming from local storage (never loading entire files into RAM).
 2. **Pre-Flight Remote Check (Idempotency / Resume)**:
-   - Ensure the remote `YYYY/MM` directory exists (creating intermediate directories as needed).
-   - Check if the target file already exists at `{destination}/{YYYY}/{MM}/{filename}`.
+   - Ensure the remote `{source}/{YYYY}/{MM}` directory exists under `{base_path}/{device_name}` (creating intermediate directories as needed).
+   - Check if the target file already exists at `{destination}/{source}/{YYYY}/{MM}/{filename}`.
    - If it exists: verify remote byte size and read back remote SHA-256.
      - If `remoteSize == localSize` AND `remoteHash == localHash`: mark as **Already Verified / Skipped** (safe to delete locally in Crop Mode).
      - If sizes or hashes differ: do **not** overwrite a different file blindly; disambiguate the target filename (e.g., `<stem>_<shortHash>.<ext>`) so no distinct file is lost.
@@ -166,13 +178,15 @@ class BackupItem {
   final String id;
   final String fileName;
   final String localPath;
+  final String sourceFolder; // Sanitized origin folder, e.g. "camera", "screenshots", "whatsapp-images"
   final int sizeBytes;
-  final DateTime createdAt; // Used for oldest-first sorting
+  final DateTime createdAt; // Used for oldest-first sorting and YYYY/MM pathing
   final String mimeType;
   const BackupItem({
     required this.id,
     required this.fileName,
     required this.localPath,
+    required this.sourceFolder,
     required this.sizeBytes,
     required this.createdAt,
     required this.mimeType,
