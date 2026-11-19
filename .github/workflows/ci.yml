@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    name: Analyze & Unit/Widget Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: mobile
+        run: mise exec -- flutter pub get
+
+      - name: Static analysis
+        run: mise run analyze
+
+      - name: Unit & widget tests
+        run: mise run test
+
+  build-apk:
+    name: Build Android APKs
+    needs: analyze-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+          cache: true
+
+      - name: Build Debug & Release APKs (no secrets)
+        run: |
+          mise run build-apk
+          mise run build-release
+
+      - name: Upload Release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uback-release-apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
+
+  emulator-e2e:
+    name: Android Emulator E2E (SMB2 + Chaos Resilience)
+    needs: analyze-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+          cache: true
+
+      - name: Install uv for local SMB2 test server
+        uses: astral-sh/setup-uv@v5
+
+      - name: Enable KVM group permissions
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run full Android Emulator E2E & Chaos Suite
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot-save
+          disable-animations: true
+          script: |
+            KEEP_EMULATOR=1 mise run test-e2e
+            KEEP_EMULATOR=1 UBACK_E2E_CHAOS=1 mise run test-e2e

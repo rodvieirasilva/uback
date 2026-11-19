@@ -6,13 +6,15 @@ config.toml
 dart_defines.json
 mobile/dart_defines.json
 
-# OS / Editor
+# OS / Editor / Python cache
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
 *.swp
 *.swo
+__pycache__/
+*.py[cod]
 
 # Flutter / Dart / Android (in /mobile or root)
 .dart_tool/

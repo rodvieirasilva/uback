@@ -1,0 +1,473 @@
+package uback.rodvieirasilva.github.io
+
+import com.hierynomus.mserref.NtStatus
+import com.hierynomus.msdtyp.AccessMask
+import com.hierynomus.msdtyp.FileTime
+import com.hierynomus.msfscc.FileAttributes
+import com.hierynomus.msfscc.fileinformation.FileBasicInformation
+import com.hierynomus.mssmb2.SMB2CreateDisposition
+import com.hierynomus.mssmb2.SMB2CreateOptions
+import com.hierynomus.mssmb2.SMB2ShareAccess
+import com.hierynomus.mssmb2.SMBApiException
+import com.hierynomus.security.bc.BCSecurityProvider
+import com.hierynomus.smbj.SMBClient
+import com.hierynomus.smbj.SmbConfig
+import com.hierynomus.smbj.auth.AuthenticationContext
+import com.hierynomus.smbj.connection.Connection
+import com.hierynomus.smbj.session.Session
+import com.hierynomus.smbj.share.DiskShare
+import java.io.File
+import java.io.FileInputStream
+import java.security.MessageDigest
+import java.util.EnumSet
+import java.util.concurrent.TimeUnit
+
+data class SmbConnectionConfig(
+    val host: String,
+    val port: Int,
+    val share: String,
+    val basePath: String,
+    val username: String,
+    val password: String,
+    val domain: String,
+) {
+    companion object {
+        fun fromMap(map: Map<*, *>): SmbConnectionConfig = SmbConnectionConfig(
+            host = (map["host"] as? String ?: "").trim(),
+            port = (map["port"] as? Number)?.toInt() ?: 445,
+            share = (map["share"] as? String ?: "").trim().trim('/', '\\'),
+            basePath = (map["basePath"] as? String ?: "").trim().trim('/', '\\'),
+            username = (map["username"] as? String ?: "").trim(),
+            password = map["password"] as? String ?: "",
+            domain = (map["domain"] as? String ?: "").trim(),
+        )
+    }
+}
+
+enum class TransferOutcome {
+    TRANSFERRED_VERIFIED,
+    SKIPPED_ALREADY_VERIFIED,
+}
+
+data class TransferResult(
+    val outcome: TransferOutcome,
+    val remotePath: String,
+    val sha256: String,
+    val sizeBytes: Long,
+)
+
+class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable {
+
+    private val smbConfig: SmbConfig = SmbConfig.builder()
+        .withSecurityProvider(BCSecurityProvider())
+        .withTimeout(15, TimeUnit.SECONDS)
+        .withSoTimeout(20, TimeUnit.SECONDS)
+        .withMultiProtocolNegotiate(true)
+        .build()
+
+    private var client: SMBClient? = null
+    private var connection: Connection? = null
+    private var session: Session? = null
+    private var diskShare: DiskShare? = null
+
+    private fun ensureConnected(): DiskShare {
+        val current = diskShare
+        if (current != null && current.isConnected && connection?.isConnected == true) {
+            return current
+        }
+        reconnect()
+        return requireNotNull(diskShare) { "Failed to establish SMB share connection" }
+    }
+
+    fun reconnect() {
+        close()
+        require(config.host.isNotBlank()) { "SMB host is required" }
+        require(config.share.isNotBlank()) { "SMB share name is required" }
+
+        val c = SMBClient(smbConfig)
+        client = c
+        val conn = c.connect(config.host, config.port)
+        connection = conn
+
+        val auth = if (config.username.isBlank()) {
+            AuthenticationContext.anonymous()
+        } else {
+            AuthenticationContext(
+                config.username,
+                config.password.toCharArray(),
+                config.domain.ifBlank { null },
+            )
+        }
+        val sess = conn.authenticate(auth)
+        session = sess
+        val share = sess.connectShare(config.share)
+        if (share !is DiskShare) {
+            share.close()
+            throw IllegalStateException("SMB share '${config.share}' is not a disk share")
+        }
+        diskShare = share
+    }
+
+    fun testConnection(): String {
+        val share = ensureConnected()
+        if (config.basePath.isNotBlank()) {
+            ensureDirectories(share, normalizeSmbPath(config.basePath))
+        }
+        return "Connected to smb://${config.host}:${config.port}/${config.share}" +
+            if (config.basePath.isNotBlank()) "/${config.basePath}" else ""
+    }
+
+    /**
+     * Streams [localFile] to [remoteDirRel]/[fileName] with:
+     * 1. Local streaming SHA-256 calculation.
+     * 2. Pre-flight idempotency check (remote size + SHA-256 read-back) & hash-suffix disambiguation.
+     * 3. Atomic upload to `.uback.tmp`.
+     * 4. Mandatory full SHA-256 read-back verification (always enabled).
+     * 5. Atomic rename to final file + best-effort lastModified preservation + existence/size check.
+     * 6. Up to [maxAttempts] retries with exponential backoff and full session reconnect.
+     */
+    fun backupFileWithVerification(
+        localFile: File,
+        remoteDirRel: String,
+        fileName: String,
+        createdAtMs: Long,
+        onStage: (String) -> Unit,
+        onBytesProgress: (Long) -> Unit,
+        isCancelled: () -> Boolean,
+        maxAttempts: Int = 3,
+    ): TransferResult {
+        require(localFile.exists() && localFile.isFile) { "Local file not found: ${localFile.path}" }
+        val localSize = localFile.length()
+        require(localSize > 0L) { "Refusing to back up empty file: ${localFile.path}" }
+
+        onStage("hashing")
+        val localSha256 = computeLocalSha256(localFile, isCancelled)
+        val normDir = normalizeSmbPath(remoteDirRel)
+
+        var lastError: Throwable? = null
+        for (attempt in 1..maxAttempts) {
+            if (isCancelled()) throw InterruptedException("Backup cancelled")
+            try {
+                val share = ensureConnected()
+                ensureDirectories(share, normDir)
+
+                // Step 2: Pre-flight check & collision resolution
+                val targetName = resolveTargetFileName(
+                    share = share,
+                    normDir = normDir,
+                    originalFileName = fileName,
+                    localSize = localSize,
+                    localSha256 = localSha256,
+                    onStage = onStage,
+                    isCancelled = isCancelled,
+                )
+
+                val targetPath = joinSmbPath(normDir, targetName.fileName)
+                if (targetName.alreadyVerified) {
+                    onBytesProgress(localSize)
+                    return TransferResult(
+                        outcome = TransferOutcome.SKIPPED_ALREADY_VERIFIED,
+                        remotePath = targetPath.replace('\\', '/'),
+                        sha256 = localSha256,
+                        sizeBytes = localSize,
+                    )
+                }
+
+                // Step 3: Atomic upload to `.uback.tmp`
+                val tempPath = "$targetPath.uback.tmp"
+                if (safeFileExists(share, tempPath)) {
+                    runCatching { share.rm(tempPath) }
+                }
+
+                onStage("uploading")
+                android.util.Log.i("UBack", "Uploading $fileName -> $tempPath ($localSize bytes)")
+                uploadStream(share, localFile, tempPath, onBytesProgress, isCancelled)
+
+                // Step 4: Mandatory full SHA-256 read-back verification (ALWAYS ON)
+                onStage("verifying")
+                android.util.Log.i("UBack", "Checking remote size for $tempPath")
+                val remoteTempSize = getRemoteFileSize(share, tempPath)
+                if (remoteTempSize != localSize) {
+                    runCatching { share.rm(tempPath) }
+                    throw IllegalStateException(
+                        "Post-upload size mismatch for $fileName: expected $localSize, got $remoteTempSize",
+                    )
+                }
+
+                android.util.Log.i("UBack", "Reading back SHA-256 for $tempPath ($remoteTempSize bytes)")
+                val remoteSha256 = computeRemoteSha256(share, tempPath, remoteTempSize, isCancelled)
+                if (!remoteSha256.equals(localSha256, ignoreCase = true)) {
+                    runCatching { share.rm(tempPath) }
+                    throw IllegalStateException(
+                        "Post-upload SHA-256 mismatch for $fileName: expected $localSha256, got $remoteSha256",
+                    )
+                }
+
+                // Step 5: Atomic commit (rename .uback.tmp -> final target)
+                android.util.Log.i("UBack", "Renaming $tempPath -> $targetPath")
+                renameRemoteFile(share, tempPath, targetPath)
+
+                // Best-effort timestamp preservation
+                val targetTimeMs = if (createdAtMs > 0L) createdAtMs else localFile.lastModified()
+                if (targetTimeMs > 0L) {
+                    runCatching { setRemoteLastModified(share, targetPath, targetTimeMs) }
+                }
+
+                // Final sanity check after rename
+                if (!safeFileExists(share, targetPath)) {
+                    throw IllegalStateException("Final file missing after rename: $targetPath")
+                }
+                val finalSize = getRemoteFileSize(share, targetPath)
+                if (finalSize != localSize) {
+                    throw IllegalStateException(
+                        "Final file size mismatch after rename: expected $localSize, got $finalSize",
+                    )
+                }
+
+                android.util.Log.i("UBack", "Verified & committed $targetPath (sha256=${localSha256.take(12)}...)")
+                return TransferResult(
+                    outcome = TransferOutcome.TRANSFERRED_VERIFIED,
+                    remotePath = targetPath.replace('\\', '/'),
+                    sha256 = localSha256,
+                    sizeBytes = localSize,
+                )
+            } catch (e: InterruptedException) {
+                throw e
+            } catch (e: Throwable) {
+                android.util.Log.w("UBack", "Attempt $attempt/$maxAttempts failed for $fileName", e)
+                lastError = e
+                if (attempt < maxAttempts && !isCancelled()) {
+                    onStage("retrying")
+                    runCatching { close() }
+                    val backoffMs = 1000L * (1L shl (attempt - 1))
+                    Thread.sleep(backoffMs)
+                }
+            }
+        }
+        throw lastError ?: IllegalStateException("Transfer failed for $fileName")
+    }
+
+    private data class TargetResolution(
+        val fileName: String,
+        val alreadyVerified: Boolean,
+    )
+
+    private fun resolveTargetFileName(
+        share: DiskShare,
+        normDir: String,
+        originalFileName: String,
+        localSize: Long,
+        localSha256: String,
+        onStage: (String) -> Unit,
+        isCancelled: () -> Boolean,
+    ): TargetResolution {
+        val candidatePath = joinSmbPath(normDir, originalFileName)
+        if (!safeFileExists(share, candidatePath)) {
+            return TargetResolution(originalFileName, alreadyVerified = false)
+        }
+
+        // Existing file found — verify size + full SHA-256 before trusting it!
+        onStage("verifying")
+        val existingSize = getRemoteFileSize(share, candidatePath)
+        if (existingSize == localSize) {
+            val existingHash = computeRemoteSha256(share, candidatePath, existingSize, isCancelled)
+            if (existingHash.equals(localSha256, ignoreCase = true)) {
+                return TargetResolution(originalFileName, alreadyVerified = true)
+            }
+        }
+
+        // Collision with different content: disambiguate with short SHA-256 suffix.
+        val disambiguated = disambiguateFileName(originalFileName, localSha256.take(8))
+        val disambPath = joinSmbPath(normDir, disambiguated)
+        if (safeFileExists(share, disambPath)) {
+            val disambSize = getRemoteFileSize(share, disambPath)
+            if (disambSize == localSize) {
+                val disambHash = computeRemoteSha256(share, disambPath, disambSize, isCancelled)
+                if (disambHash.equals(localSha256, ignoreCase = true)) {
+                    return TargetResolution(disambiguated, alreadyVerified = true)
+                }
+            }
+        }
+        return TargetResolution(disambiguated, alreadyVerified = false)
+    }
+
+    private fun uploadStream(
+        share: DiskShare,
+        localFile: File,
+        remotePath: String,
+        onBytesProgress: (Long) -> Unit,
+        isCancelled: () -> Boolean,
+    ) {
+        val buffer = ByteArray(BUFFER_SIZE)
+        var uploaded = 0L
+
+        share.openFile(
+            remotePath,
+            EnumSet.of(AccessMask.GENERIC_WRITE, AccessMask.DELETE),
+            EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL),
+            SMB2ShareAccess.ALL,
+            SMB2CreateDisposition.FILE_OVERWRITE_IF,
+            EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE),
+        ).use { remoteFile ->
+            remoteFile.outputStream.use { out ->
+                FileInputStream(localFile).use { input ->
+                    while (true) {
+                        if (isCancelled()) {
+                            runCatching { remoteFile.deleteOnClose() }
+                            throw InterruptedException("Backup cancelled during upload")
+                        }
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        out.write(buffer, 0, read)
+                        uploaded += read
+                        onBytesProgress(uploaded)
+                    }
+                    out.flush()
+                }
+            }
+        }
+    }
+
+    private fun getRemoteFileSize(share: DiskShare, remotePath: String): Long {
+        return share.getFileInformation(remotePath).standardInformation.endOfFile
+    }
+
+    private fun computeRemoteSha256(
+        share: DiskShare,
+        remotePath: String,
+        expectedSize: Long,
+        isCancelled: () -> Boolean,
+    ): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(BUFFER_SIZE)
+        share.openFile(
+            remotePath,
+            EnumSet.of(AccessMask.GENERIC_READ),
+            null,
+            SMB2ShareAccess.ALL,
+            SMB2CreateDisposition.FILE_OPEN,
+            null,
+        ).use { remoteFile ->
+            var offset = 0L
+            while (offset < expectedSize) {
+                if (isCancelled()) throw InterruptedException("Backup cancelled during verification")
+                val toRead = minOf(buffer.size.toLong(), expectedSize - offset).toInt()
+                val read = remoteFile.read(buffer, offset, 0, toRead)
+                if (read <= 0) {
+                    throw IllegalStateException(
+                        "Unexpected EOF reading $remotePath at offset $offset / $expectedSize",
+                    )
+                }
+                digest.update(buffer, 0, read)
+                offset += read
+            }
+        }
+        return digest.digest().toHexString()
+    }
+
+    private fun computeLocalSha256(localFile: File, isCancelled: () -> Boolean): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(BUFFER_SIZE)
+        FileInputStream(localFile).use { input ->
+            while (true) {
+                if (isCancelled()) throw InterruptedException("Backup cancelled during hashing")
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().toHexString()
+    }
+
+    private fun renameRemoteFile(share: DiskShare, fromPath: String, toPath: String) {
+        share.openFile(
+            fromPath,
+            EnumSet.of(AccessMask.DELETE, AccessMask.GENERIC_WRITE),
+            null,
+            SMB2ShareAccess.ALL,
+            SMB2CreateDisposition.FILE_OPEN,
+            null,
+        ).use { file ->
+            file.rename(toPath, true)
+        }
+    }
+
+    private fun setRemoteLastModified(share: DiskShare, remotePath: String, epochMs: Long) {
+        val ft = FileTime.ofEpochMillis(epochMs)
+        val info = FileBasicInformation(ft, ft, ft, ft, FileAttributes.FILE_ATTRIBUTE_NORMAL.value)
+        share.setFileInformation(remotePath, info)
+    }
+
+    private fun ensureDirectories(share: DiskShare, smbDirPath: String) {
+        if (smbDirPath.isBlank()) return
+        val segments = smbDirPath.split('\\').filter { it.isNotBlank() }
+        var current = ""
+        for (segment in segments) {
+            current = if (current.isEmpty()) segment else "$current\\$segment"
+            if (!safeFolderExists(share, current)) {
+                try {
+                    share.mkdir(current)
+                } catch (e: SMBApiException) {
+                    if (e.status != NtStatus.STATUS_OBJECT_NAME_COLLISION) throw e
+                }
+            }
+        }
+    }
+
+    private fun safeFolderExists(share: DiskShare, path: String): Boolean {
+        return try {
+            share.folderExists(path)
+        } catch (e: SMBApiException) {
+            if (isNotFoundStatus(e)) false else throw e
+        }
+    }
+
+    private fun safeFileExists(share: DiskShare, path: String): Boolean {
+        return try {
+            share.fileExists(path)
+        } catch (e: SMBApiException) {
+            if (isNotFoundStatus(e)) false else throw e
+        }
+    }
+
+    private fun isNotFoundStatus(e: SMBApiException): Boolean {
+        return e.status == NtStatus.STATUS_NO_SUCH_FILE ||
+            e.status == NtStatus.STATUS_OBJECT_NAME_NOT_FOUND ||
+            e.status == NtStatus.STATUS_OBJECT_PATH_NOT_FOUND
+    }
+
+    override fun close() {
+        runCatching { diskShare?.close() }
+        runCatching { session?.close() }
+        runCatching { connection?.close() }
+        runCatching { client?.close() }
+        diskShare = null
+        session = null
+        connection = null
+        client = null
+    }
+
+    companion object {
+        private const val BUFFER_SIZE = 64 * 1024
+
+        fun normalizeSmbPath(path: String): String = path
+            .replace('/', '\\')
+            .split('\\')
+            .filter { it.isNotBlank() }
+            .joinToString("\\")
+
+        fun joinSmbPath(dir: String, name: String): String =
+            if (dir.isBlank()) name else "$dir\\$name"
+
+        fun disambiguateFileName(fileName: String, shortHash: String): String {
+            val dot = fileName.lastIndexOf('.')
+            return if (dot > 0 && dot < fileName.length - 1) {
+                "${fileName.substring(0, dot)}_$shortHash${fileName.substring(dot)}"
+            } else {
+                "${fileName}_$shortHash"
+            }
+        }
+
+        private fun ByteArray.toHexString(): String = joinToString("") { "%02x".format(it) }
+    }
+}
