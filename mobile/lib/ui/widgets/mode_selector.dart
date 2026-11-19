@@ -115,6 +115,8 @@ class _ModeTile extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   color: selected ? active : cs.onSurface,
@@ -123,6 +125,8 @@ class _ModeTile extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: cs.onSurfaceVariant,
                       fontSize: 11.5,

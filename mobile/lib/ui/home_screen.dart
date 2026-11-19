@@ -6,7 +6,6 @@ import '../core/testing/test_keys.dart';
 import 'settings_screen.dart';
 import 'widgets/batch_limit_selector.dart';
 import 'widgets/connection_banner.dart';
-import 'widgets/destination_card.dart';
 import 'widgets/error_log_sheet.dart';
 import 'widgets/media_sources_card.dart';
 import 'widgets/mode_selector.dart';
@@ -78,7 +77,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Text('UBack'),
+                const Flexible(
+                  child: Text('UBack', overflow: TextOverflow.ellipsis),
+                ),
               ],
             ),
             actions: [
@@ -86,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 AppTestKeys.testConnectionId,
                 child: IconButton(
                   key: AppTestKeys.testConnection,
-                  tooltip: 'Test SMB Connection',
+                  tooltip: 'Test Connection',
                   onPressed: ctrl.testingConnection || isRunning ? null : () => ctrl.testConnection(),
                   icon: ctrl.testingConnection
                       ? const SizedBox(
@@ -114,21 +115,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  DestinationCard(destinationPreview: ctrl.destinationPreview),
                   if (ctrl.connectionResult != null) ...[
-                    const SizedBox(height: 10),
                     ConnectionBanner(result: ctrl.connectionResult!),
+                    const SizedBox(height: 12),
                   ],
-                  if (ctrl.initialized) ...[
-                    const SizedBox(height: 10),
+                  if (ctrl.initialized)
                     PermissionsAlertCard(
                       permissions: ctrl.permissions,
                       mode: ctrl.mode,
                       onGrantMedia: ctrl.requestMediaPermissions,
                       onGrantAllFiles: ctrl.openAllFilesAccessSettings,
                     ),
-                  ],
-                  const SizedBox(height: 14),
                   ModeSelector(
                     selectedMode: ctrl.mode,
                     enabled: !isRunning,
@@ -144,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     selectedFiles: ctrl.selectedFileCount,
                     selectedBytes: ctrl.selectedTotalBytes,
                     enabled: !isRunning,
-                    onToggle: ctrl.toggleSource,
+                    onToggle: ctrl.toggleSourceNode,
                     onRefreshEstimate: ctrl.refreshSourceStats,
                   ),
                   const SizedBox(height: 16),
@@ -229,6 +226,8 @@ class _PrimaryActionButton extends StatelessWidget {
           icon: const Icon(Icons.stop_circle_outlined),
           label: const Text(
             'Stop Backup Safely',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
         ),
@@ -243,9 +242,9 @@ class _PrimaryActionButton extends StatelessWidget {
         onPressed: onStart,
         icon: const Icon(Icons.backup_rounded),
         label: Text(
-          mode == BackupMode.crop
-              ? 'Start Crop Backup (Verify & Free Space)'
-              : 'Start Copy Backup',
+          mode == BackupMode.crop ? 'Start Crop Backup' : 'Start Copy Backup',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),

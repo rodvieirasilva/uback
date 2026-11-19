@@ -1,5 +1,9 @@
-# Copy this file to `config.toml` and fill in your local NAS defaults.
+# Copy this file to `config.toml` and fill in your local backup destination defaults.
 # `config.toml` is gitignored and injected at compile time as default app settings.
+
+[destination]
+# Supported destination types: "smb_nas" (extensible for future destinations)
+type = "smb_nas"
 
 [smb]
 host = "192.168.1.100"

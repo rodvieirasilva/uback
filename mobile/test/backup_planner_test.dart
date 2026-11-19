@@ -42,4 +42,30 @@ void main() {
     final planned = BackupPlanner.plan(items, limit: const BackupLimit(maxBytes: 50));
     expect(planned.map((e) => e.id).toList(), ['oldest']);
   });
+
+  test('planAcrossSources picks global oldest across ALL sources after per-source capping', () {
+    final bySource = <String, List<BackupItem>>{
+      'camera.images': [
+        _item('cam_new', DateTime(2025, 5, 1), 100, source: 'camera'),
+        _item('cam_old_2', DateTime(2023, 2, 1), 100, source: 'camera'),
+        _item('cam_mid', DateTime(2024, 1, 1), 100, source: 'camera'),
+      ],
+      'whatsapp.received.audios': [
+        _item('wa_old_1', DateTime(2022, 11, 1), 100, source: 'whatsapp/received/audios'),
+        _item('wa_new', DateTime(2025, 9, 1), 100, source: 'whatsapp/received/audios'),
+      ],
+      'recordings': [
+        _item('rec_old_3', DateTime(2023, 6, 1), 100, source: 'recordings'),
+      ],
+      'screenshots': [
+        _item('ss_old_4', DateTime(2023, 9, 1), 100, source: 'screenshots'),
+      ],
+    };
+
+    final planned = BackupPlanner.planAcrossSources(
+      bySource,
+      limit: const BackupLimit(maxFiles: 3),
+    );
+    expect(planned.map((e) => e.id).toList(), ['wa_old_1', 'cam_old_2', 'rec_old_3']);
+  });
 }

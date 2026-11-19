@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uback/core/backup/backup_destination.dart';
+import 'package:uback/core/backup/media_source.dart';
 import 'package:uback/core/config/app_config.dart';
 
 void main() {
   const compileDefaults = AppSettings(
+    destinationType: SmbNasDestination.typeId,
     host: '192.168.1.50',
     port: 445,
     share: 'safe',
@@ -11,7 +14,7 @@ void main() {
     password: 'default_password',
     domain: '',
     deviceFolderOverride: '',
-    enabledSourceIds: {'camera', 'screenshots'},
+    enabledSourceIds: defaultEnabledMediaSourceIds,
   );
 
   test('loads compile-time defaults when storage is empty', () async {
@@ -22,10 +25,24 @@ void main() {
     );
 
     final loaded = await repo.load();
+    expect(loaded.destinationType, SmbNasDestination.typeId);
     expect(loaded.host, '192.168.1.50');
     expect(loaded.username, 'default_user');
     expect(loaded.password, 'default_password');
-    expect(loaded.enabledSourceIds, {'camera', 'screenshots'});
+    expect(loaded.enabledSourceIds, defaultEnabledMediaSourceIds);
+  });
+
+  test('migrates legacy camera source id to camera.images and camera.videos', () async {
+    final plain = InMemoryKeyValueStore();
+    await plain.write('uback_enabled_sources', 'camera,screenshots');
+    final repo = AppSettingsRepository(
+      plainStore: plain,
+      secureStore: InMemoryKeyValueStore(),
+      defaults: compileDefaults,
+    );
+
+    final loaded = await repo.load();
+    expect(loaded.enabledSourceIds, {'camera.images', 'camera.videos', 'screenshots'});
   });
 
   test('runtime saved settings override defaults and reset restores defaults', () async {
@@ -42,7 +59,7 @@ void main() {
       port: 4455,
       username: 'rodrigo',
       password: 'secret',
-      enabledSourceIds: {'camera'},
+      enabledSourceIds: {'camera.images', 'recordings'},
     );
     await repo.save(custom);
 
@@ -51,20 +68,16 @@ void main() {
     expect(reloaded.port, 4455);
     expect(reloaded.username, 'rodrigo');
     expect(reloaded.password, 'secret');
-    expect(reloaded.enabledSourceIds, {'camera'});
-    expect(
-      reloaded.destinationPreview("Rodrigo's Phone"),
-      'smb://10.0.0.99:4455/safe/local/phone/rodrigo/camera/YYYY/MM',
-    );
+    expect(reloaded.enabledSourceIds, {'camera.images', 'recordings'});
 
     final restored = await repo.resetToDefaults();
     expect(restored.host, '192.168.1.50');
     expect(restored.username, 'default_user');
-    expect(restored.enabledSourceIds, {'camera', 'screenshots'});
+    expect(restored.enabledSourceIds, defaultEnabledMediaSourceIds);
 
     final afterReset = await repo.load();
     expect(afterReset.host, '192.168.1.50');
     expect(afterReset.password, 'default_password');
-    expect(afterReset.enabledSourceIds, {'camera', 'screenshots'});
+    expect(afterReset.enabledSourceIds, defaultEnabledMediaSourceIds);
   });
 }

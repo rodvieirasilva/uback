@@ -45,13 +45,11 @@ Ensure your local gitignored `config.toml` has your NAS defaults, then build and
 mise run deploy-release
 ```
 
-## 6. Tag & Publish GitHub Release
+## 6. Tag & Publish GitHub Release (Automated via Release CI)
+Pushing a matching `vX.Y.Z` tag automatically triggers [.github/workflows/release.yml](../.github/workflows/release.yml), which verifies the tag against `mobile/pubspec.yaml`, runs `analyze` + `test`, builds a clean release APK with zero baked secrets, generates a `.sha256` checksum, and publishes the GitHub Release:
 ```bash
 git tag -a v1.1.0 -m "UBack v1.1.0"
 git push origin v1.1.0
-gh release create v1.1.0 \
-  mobile/build/app/outputs/flutter-apk/app-release.apk \
-  --title "UBack v1.1.0" \
-  --generate-notes
+gh run watch
 ```
-> **Security Reminder**: Before attaching an APK to a shared release, ensure `config.toml` is absent (or moved aside temporarily) when building a shareable APK so private NAS credentials are not baked into compile-time defaults.
+> **Security Reminder**: Never commit `config.toml` or `mobile/dart_defines.json`. Release CI explicitly fails if either file exists in the checkout so public release APKs never contain personal NAS credentials.

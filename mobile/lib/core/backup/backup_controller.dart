@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
-import 'backup_planner.dart';
+import 'backup_destination.dart';
 import 'image_video_media_exporter.dart';
 import 'media_exporter.dart';
 import 'media_source.dart';
@@ -12,6 +12,7 @@ import 'native_bridge.dart';
 class BackupController extends ChangeNotifier {
   final AppSettingsRepository _settingsRepo;
   final NativeBackupBridge _bridge;
+  late final DestinationRegistry _destinations;
   late final List<MediaSource> _mediaSources;
   late final ImageVideoMediaExporter _exporter;
 
@@ -36,8 +37,10 @@ class BackupController extends ChangeNotifier {
   BackupController({
     required this._settingsRepo,
     required this._bridge,
+    DestinationRegistry? destinations,
     List<MediaSource>? mediaSources,
   }) {
+    _destinations = destinations ?? DestinationRegistry.defaults(_bridge);
     _mediaSources = List.unmodifiable(mediaSources ?? defaultMediaSources(_bridge));
     _exporter = ImageVideoMediaExporter(
       bridge: _bridge,
@@ -47,11 +50,12 @@ class BackupController extends ChangeNotifier {
   }
 
   AppSettings get settings => _settings;
+  List<BackupDestination> get availableDestinations => _destinations.all;
+  BackupDestination get activeDestination => _destinations.resolve(_settings.destinationType);
   List<MediaSource> get mediaSources => _mediaSources;
   String get detectedDeviceName => _detectedDeviceName;
   String get appVersion => _appVersion;
   String get resolvedDeviceFolder => _settings.resolvedDeviceFolder(_detectedDeviceName);
-  String get destinationPreview => _settings.destinationPreview(_detectedDeviceName);
   PermissionState get permissions => _permissions;
   Map<String, MediaSourceStats> get sourceStats => _sourceStats;
   bool get estimatingStats => _estimatingStats;
@@ -66,11 +70,19 @@ class BackupController extends ChangeNotifier {
   String? get statusMessage => _statusMessage;
   MediaExporter get exporter => _exporter;
 
+  Set<String> get _allRegisteredLeafIds {
+    final ids = <String>{};
+    for (final src in _mediaSources) {
+      ids.addAll(src.leafIds);
+    }
+    return ids;
+  }
+
   int get selectedFileCount {
     var total = 0;
-    for (final src in _mediaSources) {
-      if (_settings.isSourceEnabled(src.id)) {
-        total += _sourceStats[src.id]?.fileCount ?? 0;
+    for (final leafId in _allRegisteredLeafIds) {
+      if (_settings.isSourceEnabled(leafId)) {
+        total += _sourceStats[leafId]?.fileCount ?? 0;
       }
     }
     return total;
@@ -78,9 +90,9 @@ class BackupController extends ChangeNotifier {
 
   int get selectedTotalBytes {
     var total = 0;
-    for (final src in _mediaSources) {
-      if (_settings.isSourceEnabled(src.id)) {
-        total += _sourceStats[src.id]?.totalBytes ?? 0;
+    for (final leafId in _allRegisteredLeafIds) {
+      if (_settings.isSourceEnabled(leafId)) {
+        total += _sourceStats[leafId]?.totalBytes ?? 0;
       }
     }
     return total;
@@ -140,13 +152,15 @@ class BackupController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> toggleSource(String sourceId, bool enabled) async {
+  /// Toggles either a single leaf [MediaSource] or an entire hierarchical group
+  /// (enabling/disabling all descendant leaf IDs atomically).
+  Future<void> toggleSourceNode(MediaSource source, bool enabled) async {
     if (_progress.isActive) return;
     final next = Set<String>.of(_settings.enabledSourceIds);
     if (enabled) {
-      next.add(sourceId);
+      next.addAll(source.leafIds);
     } else {
-      next.remove(sourceId);
+      next.removeAll(source.leafIds);
     }
     _settings = _settings.copyWith(enabledSourceIds: next);
     _statusMessage = null;
@@ -222,10 +236,11 @@ class BackupController extends ChangeNotifier {
 
   Future<ConnectionTestResult> testConnection([AppSettings? overrideSettings]) async {
     final target = overrideSettings ?? _settings;
-    if (!target.isConfigured) {
-      const res = ConnectionTestResult(
+    final dest = _destinations.resolve(target.destinationType);
+    if (!dest.isConfigured(target)) {
+      final res = ConnectionTestResult(
         ok: false,
-        message: 'Configure SMB Host and Share in Settings first.',
+        message: 'Configure ${dest.displayName} in Settings first.',
       );
       _connectionResult = res;
       notifyListeners();
@@ -237,7 +252,7 @@ class BackupController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final res = await _bridge.testConnection(target);
+      final res = await dest.testConnection(target);
       _connectionResult = res;
       return res;
     } catch (e) {
@@ -254,8 +269,9 @@ class BackupController extends ChangeNotifier {
     if (_progress.isActive) return;
     _statusMessage = null;
 
-    if (!_settings.isConfigured) {
-      _statusMessage = 'Configure SMB Host and Share in Settings before backing up.';
+    final dest = activeDestination;
+    if (!dest.isConfigured(_settings)) {
+      _statusMessage = 'Configure ${dest.displayName} in Settings before backing up.';
       notifyListeners();
       return;
     }
@@ -290,8 +306,9 @@ class BackupController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final discovered = await _exporter.discoverItems();
-      final planned = BackupPlanner.plan(discovered, limit: currentLimit);
+      // Discovers per-source oldest candidates, merges across ALL enabled sources,
+      // sorts globally oldest-first, and enforces the active batch limit.
+      final planned = await _exporter.discoverItems(limit: currentLimit);
 
       if (planned.isEmpty) {
         _progress = const BackupProgress(
@@ -320,7 +337,7 @@ class BackupController extends ChangeNotifier {
       );
       notifyListeners();
 
-      await _bridge.startBackup(
+      await dest.startBackup(
         settings: _settings,
         mode: _mode,
         deviceFolder: resolvedDeviceFolder,
@@ -337,7 +354,7 @@ class BackupController extends ChangeNotifier {
   }
 
   Future<void> stopBackup() async {
-    await _bridge.stopBackup();
+    await activeDestination.stopBackup();
   }
 
   @override

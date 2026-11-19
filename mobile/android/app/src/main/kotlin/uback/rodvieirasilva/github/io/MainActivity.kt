@@ -101,13 +101,15 @@ class MainActivity : FlutterActivity() {
                 val enabledSources = rawSources
                     ?.mapNotNull { it as? String }
                     ?.toSet()
-                    ?: setOf("camera", "screenshots")
+                    ?: MediaSourceClassifier.ALL_SOURCE_IDS
+                val perSourceLimit = call.argument<Number>("perSourceLimit")?.toInt()
                 scope.launch {
                     try {
                         val items = withContext(Dispatchers.IO) {
                             MediaDiscovery.discover(
                                 context = applicationContext,
                                 enabledSources = enabledSources,
+                                perSourceLimit = perSourceLimit,
                             ).map { it.toMap() }
                         }
                         result.success(items)
@@ -217,6 +219,7 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             perms.add(Manifest.permission.READ_MEDIA_IMAGES)
             perms.add(Manifest.permission.READ_MEDIA_VIDEO)
+            perms.add(Manifest.permission.READ_MEDIA_AUDIO)
             perms.add(Manifest.permission.POST_NOTIFICATIONS)
         } else {
             perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -229,6 +232,8 @@ class MainActivity : FlutterActivity() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) ==
                 PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) ==
+                PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
         } else {
             ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) ==

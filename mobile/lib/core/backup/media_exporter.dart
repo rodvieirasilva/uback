@@ -16,7 +16,8 @@ class BackupItem {
   final String? contentUri;
   final String fileName;
   final String localPath;
-  final String sourceFolder; // e.g. "camera", "screenshots"
+  final String sourceId; // Leaf source id, e.g. "camera.images", "whatsapp.sent.videos"
+  final String sourceFolder; // Remote subpath, e.g. "camera", "whatsapp/sent/videos"
   final int sizeBytes;
   final DateTime createdAt; // Used for oldest-first sorting and YYYY/MM pathing
   final String mimeType;
@@ -26,20 +27,23 @@ class BackupItem {
     this.contentUri,
     required this.fileName,
     required this.localPath,
+    String? sourceId,
     required this.sourceFolder,
     required this.sizeBytes,
     required this.createdAt,
     required this.mimeType,
-  });
+  }) : sourceId = sourceId ?? sourceFolder;
 
   factory BackupItem.fromMap(Map<Object?, Object?> map) {
     final createdAtMs = (map['createdAtMs'] as num?)?.toInt() ?? 0;
+    final folder = (map['sourceFolder'] as String?) ?? 'camera';
     return BackupItem(
       id: (map['id'] as String?) ?? '',
       contentUri: map['contentUri'] as String?,
       fileName: (map['fileName'] as String?) ?? '',
       localPath: (map['localPath'] as String?) ?? '',
-      sourceFolder: (map['sourceFolder'] as String?) ?? 'camera',
+      sourceId: (map['sourceId'] as String?) ?? folder,
+      sourceFolder: folder,
       sizeBytes: (map['sizeBytes'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMs),
       mimeType: (map['mimeType'] as String?) ?? 'application/octet-stream',
@@ -51,6 +55,7 @@ class BackupItem {
         'contentUri': contentUri,
         'fileName': fileName,
         'localPath': localPath,
+        'sourceId': sourceId,
         'sourceFolder': sourceFolder,
         'sizeBytes': sizeBytes,
         'createdAtMs': createdAt.millisecondsSinceEpoch,

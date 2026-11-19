@@ -27,12 +27,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _domainCtrl;
   late final TextEditingController _deviceOverrideCtrl;
 
+  late String _destinationType;
   bool _obscurePassword = true;
 
   @override
   void initState() {
     super.initState();
     final s = widget.controller.settings;
+    _destinationType = s.destinationType;
     _hostCtrl = TextEditingController(text: s.host);
     _portCtrl = TextEditingController(text: s.port.toString());
     _shareCtrl = TextEditingController(text: s.share);
@@ -57,6 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   AppSettings _collectSettings() => widget.controller.settings.copyWith(
+        destinationType: _destinationType,
         host: _hostCtrl.text.trim(),
         port: int.tryParse(_portCtrl.text.trim()) ?? 445,
         share: _shareCtrl.text.trim(),
@@ -68,6 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
 
   void _applySettings(AppSettings s) {
+    setState(() => _destinationType = s.destinationType);
     _hostCtrl.text = s.host;
     _portCtrl.text = s.port.toString();
     _shareCtrl.text = s.share;
@@ -121,6 +125,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Text(
+                  'BACKUP DESTINATION',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        letterSpacing: 1.1,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                withTestId(
+                  AppTestKeys.settingsDestinationTypeId,
+                  child: DropdownButtonFormField<String>(
+                    key: AppTestKeys.settingsDestinationType,
+                    initialValue: _destinationType,
+                    decoration: const InputDecoration(labelText: 'Destination Type'),
+                    items: [
+                      for (final dest in ctrl.availableDestinations)
+                        DropdownMenuItem<String>(
+                          value: dest.id,
+                          child: Text(dest.displayName),
+                        ),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setState(() => _destinationType = val);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 18),
                 Text(
                   'SMB / NAS CONNECTION',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(

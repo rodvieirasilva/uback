@@ -34,7 +34,7 @@ if [[ "${SKIP_BUILD:-0}" != "1" || ! -f "$APK_PATH" ]]; then
     --dart-define=UBACK_SMB_BASE_PATH=local/phone \
     --dart-define=UBACK_SMB_USERNAME=backup-user \
     --dart-define=UBACK_SMB_PASSWORD=demo-pass \
-    --dart-define=UBACK_E2E_DEVICE_OVERRIDE=rodrigo \
+    --dart-define=UBACK_E2E_DEVICE_OVERRIDE=my-phone \
     --dart-define=UBACK_APP_VERSION="$APP_VERSION"
 fi
 
@@ -66,6 +66,7 @@ adb -s "$EMU_SERIAL" shell pm clear "$PKG" >/dev/null 2>&1 || true
 adb -s "$EMU_SERIAL" install -r "$APK_PATH"
 adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 || true
 adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.READ_MEDIA_VIDEO >/dev/null 2>&1 || true
+adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.READ_MEDIA_AUDIO >/dev/null 2>&1 || true
 adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
 adb -s "$EMU_SERIAL" shell appops set "$PKG" MANAGE_EXTERNAL_STORAGE allow >/dev/null 2>&1 || true
 

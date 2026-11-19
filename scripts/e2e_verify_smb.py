@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify E2E uploaded SMB files, SHA-256 hashes, folder structure, and WhatsApp exclusion."""
+"""Verify E2E uploaded SMB files, SHA-256 hashes, nested source layout, and untracked exclusion."""
 
 from __future__ import annotations
 
@@ -9,10 +9,13 @@ import sys
 
 
 EXPECTED_RELATIVE_PATHS = {
+    "PTT-20220501-WA0001.opus": "whatsapp/received/audios/2022/05/PTT-20220501-WA0001.opus",
     "IMG_20230110_090000.jpg": "camera/2023/01/IMG_20230110_090000.jpg",
+    "REC_20230412_100000.m4a": "recordings/2023/04/REC_20230412_100000.m4a",
     "Screenshot_20230705_110000.png": "screenshots/2023/07/Screenshot_20230705_110000.png",
+    "VID-20240201-WA0002.mp4": "whatsapp/sent/videos/2024/02/VID-20240201-WA0002.mp4",
     "VID_20240315_120000.mp4": "camera/2024/03/VID_20240315_120000.mp4",
-    "IMG_20250620_180000.jpg": "camera/2025/06/IMG_20250620_180000.jpg",
+    "IMG-20250620-WA0003.jpg": "whatsapp/received/images/2025/06/IMG-20250620-WA0003.jpg",
 }
 
 
@@ -42,11 +45,11 @@ def main() -> int:
     if leftovers:
         raise SystemExit(f"FAIL: Leftover temp files found: {leftovers}")
 
-    whatsapp_hits = list(dest_root.rglob("*WA0001*"))
-    if whatsapp_hits:
-        raise SystemExit(f"FAIL: WhatsApp file should NOT have been backed up: {whatsapp_hits}")
+    download_hits = list(dest_root.rglob("*random_download*"))
+    if download_hits:
+        raise SystemExit(f"FAIL: Untracked Download file should NOT have been backed up: {download_hits}")
 
-    print("OK: Zero .uback.tmp leftovers and WhatsApp image strictly excluded.")
+    print("OK: All 7 multi-source files verified, zero .uback.tmp leftovers, Download strictly excluded.")
     return 0
 
 

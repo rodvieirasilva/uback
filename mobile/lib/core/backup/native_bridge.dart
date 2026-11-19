@@ -12,7 +12,10 @@ abstract class NativeBackupBridge {
   Future<PermissionState> checkPermissions();
   Future<PermissionState> requestMediaPermissions();
   Future<void> openAllFilesAccessSettings();
-  Future<List<BackupItem>> discoverMedia({required Set<String> enabledSourceIds});
+  Future<List<BackupItem>> discoverMedia({
+    required Set<String> enabledSourceIds,
+    int? perSourceLimit,
+  });
   Future<Map<String, MediaSourceStats>> getSourceStats();
   Future<ConnectionTestResult> testConnection(AppSettings settings);
   Future<void> startBackup({
@@ -62,10 +65,16 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
   }
 
   @override
-  Future<List<BackupItem>> discoverMedia({required Set<String> enabledSourceIds}) async {
+  Future<List<BackupItem>> discoverMedia({
+    required Set<String> enabledSourceIds,
+    int? perSourceLimit,
+  }) async {
     final raw = await _methodChannel.invokeListMethod<Object?>(
       'discoverMedia',
-      {'enabledSources': enabledSourceIds.toList()},
+      {
+        'enabledSources': enabledSourceIds.toList(),
+        'perSourceLimit': ?perSourceLimit,
+      },
     );
     if (raw == null) return const [];
     return raw

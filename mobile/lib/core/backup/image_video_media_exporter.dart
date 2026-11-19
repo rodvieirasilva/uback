@@ -17,13 +17,14 @@ class ImageVideoMediaExporter implements MediaExporter {
   });
 
   @override
-  String get mediaTypeName => 'Camera & Screenshots';
+  String get mediaTypeName => 'Selected Media Sources';
 
   @override
   Future<List<BackupItem>> discoverItems({BackupLimit? limit}) async {
     final settings = _settingsProvider();
     final discovered = await _bridge.discoverMedia(
       enabledSourceIds: settings.enabledSourceIds,
+      perSourceLimit: limit?.maxFiles,
     );
     return BackupPlanner.plan(discovered, limit: limit);
   }
