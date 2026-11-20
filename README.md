@@ -32,20 +32,25 @@ See [docs/RELEASE.md](docs/RELEASE.md) for the release process and [AGENTS.md](A
 - **Adaptive System Theme**: Material 3 Light and Dark themes automatically follow your phone's system theme.
 - **Compile-Time Defaults + In-App Settings**: Local gitignored `config.toml` injects default destination settings at build time, while Settings lets you edit or override them at runtime (credentials stored with Android secure storage).
 
-## Install (Prebuilt Android APK)
+## Install on Android (Direct Download)
 
-1. Download the latest `uback-vX.Y.Z.apk` (and optional `.sha256` file) from **[GitHub Releases](https://github.com/rodvieirasilva/uback/releases/latest)**.
-2. *(Optional)* Verify the download integrity:
-   ```bash
-   sha256sum -c uback-vX.Y.Z.apk.sha256
-   ```
-3. Install on your Android phone:
-   - **Directly on phone**: open the downloaded `.apk` file and allow installation from your browser/file manager.
-   - **Via ADB (USB or Wireless ADB)**:
-     ```bash
-     adb install -r uback-vX.Y.Z.apk
-     ```
-4. Launch **UBack**, open **Settings** (gear icon), configure your **SMB NAS** host, share, base path, username, and password, tap **Test Connection** -> **Save**, and grant media + **All files access** permissions (required for Crop Mode and WhatsApp Sent / Voice Notes).
+> **[Download Latest APK (`uback-latest.apk`)](https://github.com/rodvieirasilva/uback/releases/latest/download/uback-latest.apk)** · [All Releases & Checksums](https://github.com/rodvieirasilva/uback/releases/latest)
+
+1. Tap **[Download Latest APK](https://github.com/rodvieirasilva/uback/releases/latest/download/uback-latest.apk)** directly on your Android phone.
+2. Open the downloaded `.apk` file and tap **Install** (allow installing unknown apps from your browser/file manager if prompted).
+3. Launch **UBack**, tap **Settings** (gear icon), enter your **SMB NAS** details (`Host`, `Share`, `Base Path`, `Username`, `Password`), tap **Test Connection** -> **Save**, and grant media + **All files access** permissions (needed for Crop Mode and WhatsApp Sent / Voice Notes).
+
+<details>
+<summary>Optional: Verify SHA-256 checksum or install via ADB</summary>
+
+```bash
+# Download the versioned APK + checksum from Releases, then verify:
+sha256sum -c uback-vX.Y.Z.apk.sha256
+
+# Install over USB or Wireless ADB:
+adb install -r uback-latest.apk
+```
+</details>
 
 ## Quick Start (Build from Source)
 
