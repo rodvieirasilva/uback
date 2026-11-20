@@ -21,6 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.Instant
@@ -36,6 +38,9 @@ data class BackupItemPayload(
     val sizeBytes: Long,
     val createdAtMs: Long,
     val isSnapshot: Boolean = false,
+    val isReadOnly: Boolean = false,
+    val deltaScope: String? = null,
+    val deltaMaxRowId: Long = 0L,
 )
 
 data class BackupJobRequest(
@@ -134,6 +139,12 @@ object BackupSessionBus {
         val cb = listener ?: return
         mainHandler.post { cb(event) }
     }
+
+    fun reEmitLatest() {
+        val cb = listener ?: return
+        val snap = latestEvent
+        mainHandler.post { cb(snap) }
+    }
 }
 
 class BackupForegroundService : Service() {
@@ -216,6 +227,9 @@ class BackupForegroundService : Service() {
         val errors = mutableListOf<Map<String, String>>()
         var activeElapsedMs = 0L
         var activeSegmentStartMs = SystemClock.elapsedRealtime()
+        var latestStage = "connecting"
+        var latestFile = ""
+        var latestInFlightBytes = 0L
 
         fun currentElapsedMs(): Long {
             val runningDelta = if (activeSegmentStartMs > 0L) {
@@ -245,6 +259,9 @@ class BackupForegroundService : Service() {
             currentFile: String,
             inFlightBytes: Long = 0L,
         ) {
+            latestStage = stage
+            latestFile = currentFile
+            latestInFlightBytes = inFlightBytes
             val done = transferred + skipped + failed
             val remaining = (total - done).coerceAtLeast(0)
             val bytesNow = (completedBytes + inFlightBytes).coerceAtMost(totalBytes)
@@ -332,8 +349,46 @@ class BackupForegroundService : Service() {
         emitProgress(state = "running", stage = "connecting", currentFile = "")
 
         val smbClient = SmbTransferClient(request.smbConfig)
+        // 1-second heartbeat & stalled-socket watchdog so elapsed timer keeps ticking and
+        // any half-dead TCP socket after screen lock / Wi-Fi power-save is aborted & retried.
+        val watchdogJob = serviceScope.launch {
+            while (isActive && BackupSessionBus.isRunning.get() && !BackupSessionBus.cancelRequested.get()) {
+                delay(1000L)
+                if (!BackupSessionBus.isRunning.get() || BackupSessionBus.cancelRequested.get()) break
+                if (BackupSessionBus.pauseRequested.get()) {
+                    smbClient.touchActivity()
+                    continue
+                }
+                emitProgress(
+                    state = "running",
+                    stage = latestStage,
+                    currentFile = latestFile,
+                    inFlightBytes = latestInFlightBytes,
+                )
+                val idleMs = SystemClock.elapsedRealtime() - smbClient.lastActivityAtMs.get()
+                if (idleMs > 35_000L && latestStage in setOf("connecting", "uploading", "verifying", "retrying")) {
+                    android.util.Log.w(
+                        "UBack",
+                        "SMB socket stalled for ${idleMs}ms during $latestStage ($latestFile); forcing socket reset",
+                    )
+                    smbClient.forceAbortStalledSocket()
+                }
+            }
+        }
         try {
-            smbClient.reconnect()
+            var lastConnectErr: Throwable? = null
+            for (attempt in 1..3) {
+                try {
+                    smbClient.reconnect()
+                    lastConnectErr = null
+                    break
+                } catch (e: Throwable) {
+                    lastConnectErr = e
+                    android.util.Log.w("UBack", "SMB initial connect attempt $attempt/3 failed: ${e.message}")
+                    if (attempt < 3) Thread.sleep(600L * attempt)
+                }
+            }
+            if (lastConnectErr != null) throw lastConnectErr
             val zone = ZoneId.systemDefault()
 
             for (item in request.items) {
@@ -396,11 +451,21 @@ class BackupForegroundService : Service() {
                         waitIfPaused = pauseGate,
                     )
 
-                    // Snapshot temp files live in app cache — always remove temp file after verified upload,
-                    // never touching actual Android Contacts / SMS / Call Logs even in Crop Mode.
+                    // Commit incremental WhatsApp delta watermark STRICTLY AFTER verified upload.
+                    if (!item.deltaScope.isNullOrBlank() && item.deltaMaxRowId > 0L) {
+                        WhatsAppDeltaState.commitWatermark(
+                            applicationContext,
+                            item.deltaScope,
+                            item.deltaMaxRowId,
+                        )
+                    }
+
+                    // Snapshot & delta temp files live in app cache — always remove temp file after verified upload,
+                    // never touching actual Android Contacts / SMS / Call Logs or WhatsApp .crypt15 files even in Crop Mode.
+                    // Read-only sources (e.g., WhatsApp Databases & Backups) are NEVER deleted locally.
                     if (item.isSnapshot) {
                         runCatching { File(item.localPath).delete() }
-                    } else if (request.mode == "crop") {
+                    } else if (request.mode == "crop" && !item.isReadOnly) {
                         // Strict Deletion Gate (Crop Mode): delete ONLY after full SHA-256 verification succeeded!
                         emitProgress(
                             state = "running",
@@ -434,9 +499,11 @@ class BackupForegroundService : Service() {
                     completedBytes += item.sizeBytes
                     emitProgress(state = "running", stage = "verified", currentFile = item.fileName)
                 } catch (_: InterruptedException) {
+                    if (item.isSnapshot) runCatching { File(item.localPath).delete() }
                     emitProgress(state = "cancelled", stage = "cancelled", currentFile = item.fileName)
                     return
                 } catch (e: Throwable) {
+                    if (item.isSnapshot) runCatching { File(item.localPath).delete() }
                     android.util.Log.e("UBack", "Backup failed for ${item.fileName}", e)
                     failed++
                     errors.add(
@@ -451,6 +518,7 @@ class BackupForegroundService : Service() {
 
             emitProgress(state = "completed", stage = "completed", currentFile = "")
         } catch (e: Throwable) {
+            android.util.Log.e("UBack", "Fatal SMB backup session error", e)
             errors.add(
                 mapOf(
                     "fileName" to "SMB Connection",
@@ -459,6 +527,7 @@ class BackupForegroundService : Service() {
             )
             emitProgress(state = "error", stage = "error", currentFile = "")
         } finally {
+            watchdogJob.cancel()
             runCatching { smbClient.close() }
         }
     }

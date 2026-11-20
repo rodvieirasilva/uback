@@ -27,10 +27,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _usernameCtrl;
   late final TextEditingController _passwordCtrl;
   late final TextEditingController _domainCtrl;
+  late final TextEditingController _whatsappKeyCtrl;
   late final TextEditingController _deviceOverrideCtrl;
 
   late String _destinationType;
   bool _obscurePassword = true;
+  bool _obscureWhatsappKey = true;
 
   @override
   void initState() {
@@ -44,6 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _usernameCtrl = TextEditingController(text: s.username);
     _passwordCtrl = TextEditingController(text: s.password);
     _domainCtrl = TextEditingController(text: s.domain);
+    _whatsappKeyCtrl = TextEditingController(text: s.whatsappKey);
     _deviceOverrideCtrl = TextEditingController(text: s.deviceFolderOverride);
   }
 
@@ -56,6 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
     _domainCtrl.dispose();
+    _whatsappKeyCtrl.dispose();
     _deviceOverrideCtrl.dispose();
     super.dispose();
   }
@@ -69,6 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         username: _usernameCtrl.text.trim(),
         password: _passwordCtrl.text,
         domain: _domainCtrl.text.trim(),
+        whatsappKey: _whatsappKeyCtrl.text.trim(),
         deviceFolderOverride: _deviceOverrideCtrl.text.trim(),
       );
 
@@ -81,6 +86,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _usernameCtrl.text = s.username;
     _passwordCtrl.text = s.password;
     _domainCtrl.text = s.domain;
+    _whatsappKeyCtrl.text = s.whatsappKey;
     _deviceOverrideCtrl.text = s.deviceFolderOverride;
   }
 
@@ -281,6 +287,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
             decoration: InputDecoration(
               labelText: 'Device Folder Override (optional)',
               helperText: 'Auto-detected: "${ctrl.detectedDeviceName}" -> $autoDevice',
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        withTestId(
+          AppTestKeys.settingsWhatsappKeyId,
+          child: TextField(
+            key: AppTestKeys.settingsWhatsappKey,
+            controller: _whatsappKeyCtrl,
+            obscureText: _obscureWhatsappKey,
+            decoration: InputDecoration(
+              labelText: 'WhatsApp 64-Digit Backup Key (optional)',
+              helperText: 'Used locally to export incremental SQLite chat deltas (.db) from .crypt15',
+              suffixIcon: IconButton(
+                icon: Icon(_obscureWhatsappKey ? Icons.visibility : Icons.visibility_off),
+                onPressed: () => setState(() => _obscureWhatsappKey = !_obscureWhatsappKey),
+              ),
             ),
           ),
         ),

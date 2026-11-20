@@ -13,3 +13,8 @@ base_path = "local/phone"
 username = "your-nas-user"
 password = "your-nas-password"
 domain = ""
+
+# Optional: 64-digit hex WhatsApp end-to-end encrypted backup key for on-device
+# incremental SQLite chat deltas (`msgstore_delta_*.db`). Leave empty to configure in Settings.
+[whatsapp]
+backup_key_64 = ""

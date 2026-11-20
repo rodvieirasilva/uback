@@ -16,11 +16,13 @@ import com.hierynomus.smbj.auth.AuthenticationContext
 import com.hierynomus.smbj.connection.Connection
 import com.hierynomus.smbj.session.Session
 import com.hierynomus.smbj.share.DiskShare
+import android.os.SystemClock
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
 import java.util.EnumSet
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 data class SmbConnectionConfig(
     val host: String,
@@ -58,10 +60,18 @@ data class TransferResult(
 
 class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable {
 
+    private data class CachedRemoteFile(
+        var sizeBytes: Long,
+        var sha256: String? = null,
+    )
+
     private val smbConfig: SmbConfig = SmbConfig.builder()
         .withSecurityProvider(BCSecurityProvider())
-        .withTimeout(15, TimeUnit.SECONDS)
-        .withSoTimeout(20, TimeUnit.SECONDS)
+        .withTimeout(20, TimeUnit.SECONDS)
+        .withReadTimeout(20, TimeUnit.SECONDS)
+        .withWriteTimeout(20, TimeUnit.SECONDS)
+        .withTransactTimeout(20, TimeUnit.SECONDS)
+        .withSoTimeout(25, TimeUnit.SECONDS)
         .withMultiProtocolNegotiate(true)
         .build()
 
@@ -70,7 +80,36 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
     private var session: Session? = null
     private var diskShare: DiskShare? = null
 
+    /**
+     * Monotonic timestamp of the most recent local/remote I/O progress so the service
+     * watchdog can abort and reconnect if an SMB socket ever wedges during screen lock.
+     */
+    val lastActivityAtMs = AtomicLong(SystemClock.elapsedRealtime())
+
+    /**
+     * Per-session cache of already-ensured remote directories and per-folder file entries
+     * (`normDir` -> lowercase filename -> `(actualFileName, sizeBytes, cachedSha256)`).
+     * Eliminates O(N^2) SMB `share.list()` and repeated folder existence round-trips.
+     */
+    private val ensuredDirs = HashSet<String>()
+    private val dirCache = HashMap<String, MutableMap<String, Pair<String, CachedRemoteFile>>>()
+
+    fun touchActivity() {
+        lastActivityAtMs.set(SystemClock.elapsedRealtime())
+    }
+
+    fun forceAbortStalledSocket() {
+        touchActivity()
+        runCatching { connection?.close() }
+        runCatching { client?.close() }
+        diskShare = null
+        session = null
+        connection = null
+        client = null
+    }
+
     private fun ensureConnected(): DiskShare {
+        touchActivity()
         val current = diskShare
         if (current != null && current.isConnected && connection?.isConnected == true) {
             return current
@@ -80,7 +119,8 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
     }
 
     fun reconnect() {
-        close()
+        touchActivity()
+        closeConnectionOnly()
         require(config.host.isNotBlank()) { "SMB host is required" }
         require(config.share.isNotBlank()) { "SMB share name is required" }
 
@@ -88,6 +128,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         client = c
         val conn = c.connect(config.host, config.port)
         connection = conn
+        touchActivity()
 
         val auth = if (config.username.isBlank()) {
             AuthenticationContext.anonymous()
@@ -106,6 +147,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
             throw IllegalStateException("SMB share '${config.share}' is not a disk share")
         }
         diskShare = share
+        touchActivity()
     }
 
     fun testConnection(): String {
@@ -234,6 +276,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                     )
                 }
 
+                recordVerifiedRemoteFile(normDir, targetName.fileName, localSize, localSha256)
                 android.util.Log.i("UBack", "Verified & committed $targetPath (sha256=${localSha256.take(12)}...)")
                 return TransferResult(
                     outcome = TransferOutcome.TRANSFERRED_VERIFIED,
@@ -246,10 +289,12 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
             } catch (e: Throwable) {
                 android.util.Log.w("UBack", "Attempt $attempt/$maxAttempts failed for $fileName", e)
                 lastError = e
+                // Invalidate cached directory listing for normDir on error so retry re-queries fresh state
+                dirCache.remove(normDir)
                 if (attempt < maxAttempts && !isCancelled()) {
                     waitIfPaused()
                     onStage("retrying")
-                    runCatching { close() }
+                    runCatching { closeConnectionOnly() }
                     val backoffMs = 1000L * (1L shl (attempt - 1))
                     Thread.sleep(backoffMs)
                 }
@@ -263,6 +308,38 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         val alreadyVerified: Boolean,
     )
 
+    private fun getOrLoadDirIndex(
+        share: DiskShare,
+        normDir: String,
+    ): MutableMap<String, Pair<String, CachedRemoteFile>> {
+        dirCache[normDir]?.let { return it }
+        touchActivity()
+        val index = HashMap<String, Pair<String, CachedRemoteFile>>()
+        val entries = runCatching { share.list(normDir) }.getOrNull()
+        touchActivity()
+        if (entries != null) {
+            for (entry in entries) {
+                val name = entry.fileName ?: continue
+                if (name == "." || name == ".." || name.endsWith(".uback.tmp")) continue
+                val isDir = (entry.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
+                if (isDir) continue
+                index[name.lowercase()] = name to CachedRemoteFile(sizeBytes = entry.endOfFile)
+            }
+            dirCache[normDir] = index
+        }
+        return index
+    }
+
+    private fun recordVerifiedRemoteFile(
+        normDir: String,
+        fileName: String,
+        sizeBytes: Long,
+        sha256: String,
+    ) {
+        val dirIndex = dirCache.getOrPut(normDir) { HashMap() }
+        dirIndex[fileName.lowercase()] = fileName to CachedRemoteFile(sizeBytes = sizeBytes, sha256 = sha256)
+    }
+
     private fun resolveTargetFileName(
         share: DiskShare,
         normDir: String,
@@ -273,16 +350,21 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         isCancelled: () -> Boolean,
         waitIfPaused: () -> Unit,
     ): TargetResolution {
+        val dirIndex = getOrLoadDirIndex(share, normDir)
         val checkedNames = HashSet<String>()
-        val candidatePath = joinSmbPath(normDir, originalFileName)
-        val originalExists = safeFileExists(share, candidatePath)
+        val origKey = originalFileName.lowercase()
+        val origEntry = dirIndex[origKey]
+        val originalExists = origEntry != null || safeFileExists(share, joinSmbPath(normDir, originalFileName))
         if (originalExists) {
-            checkedNames.add(originalFileName.lowercase())
-            // Existing file found — verify size + full SHA-256 before trusting it!
+            checkedNames.add(origKey)
             onStage("verifying")
-            val existingSize = getRemoteFileSize(share, candidatePath)
+            val candidatePath = joinSmbPath(normDir, originalFileName)
+            val existingSize = origEntry?.second?.sizeBytes ?: getRemoteFileSize(share, candidatePath)
             if (existingSize == localSize) {
-                val existingHash = computeRemoteSha256(share, candidatePath, existingSize, isCancelled, waitIfPaused)
+                val existingHash = origEntry?.second?.sha256
+                    ?: computeRemoteSha256(share, candidatePath, existingSize, isCancelled, waitIfPaused).also {
+                        recordVerifiedRemoteFile(normDir, originalFileName, existingSize, it)
+                    }
                 if (existingHash.equals(localSha256, ignoreCase = true)) {
                     return TargetResolution(originalFileName, alreadyVerified = true)
                 }
@@ -292,13 +374,18 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         // Check disambiguated filename if original had different content
         val disambiguated = disambiguateFileName(originalFileName, localSha256.take(8))
         if (originalExists) {
-            checkedNames.add(disambiguated.lowercase())
+            val disambKey = disambiguated.lowercase()
+            checkedNames.add(disambKey)
+            val disambEntry = dirIndex[disambKey]
             val disambPath = joinSmbPath(normDir, disambiguated)
-            if (safeFileExists(share, disambPath)) {
+            if (disambEntry != null || safeFileExists(share, disambPath)) {
                 onStage("verifying")
-                val disambSize = getRemoteFileSize(share, disambPath)
+                val disambSize = disambEntry?.second?.sizeBytes ?: getRemoteFileSize(share, disambPath)
                 if (disambSize == localSize) {
-                    val disambHash = computeRemoteSha256(share, disambPath, disambSize, isCancelled, waitIfPaused)
+                    val disambHash = disambEntry?.second?.sha256
+                        ?: computeRemoteSha256(share, disambPath, disambSize, isCancelled, waitIfPaused).also {
+                            recordVerifiedRemoteFile(normDir, disambiguated, disambSize, it)
+                        }
                     if (disambHash.equals(localSha256, ignoreCase = true)) {
                         return TargetResolution(disambiguated, alreadyVerified = true)
                     }
@@ -311,6 +398,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         val existingMatch = findMatchingHashInDirectory(
             share = share,
             normDir = normDir,
+            dirIndex = dirIndex,
             localSize = localSize,
             localSha256 = localSha256,
             skipLowerNames = checkedNames,
@@ -331,6 +419,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
     private fun findMatchingHashInDirectory(
         share: DiskShare,
         normDir: String,
+        dirIndex: MutableMap<String, Pair<String, CachedRemoteFile>>,
         localSize: Long,
         localSha256: String,
         skipLowerNames: Set<String>,
@@ -338,24 +427,20 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         isCancelled: () -> Boolean,
         waitIfPaused: () -> Unit,
     ): String? {
-        val entries = runCatching { share.list(normDir) }.getOrNull() ?: return null
-        for (entry in entries) {
+        for ((lowerName, pair) in dirIndex) {
             waitIfPaused()
             if (isCancelled()) throw InterruptedException("Backup cancelled during hash check")
-            val name = entry.fileName ?: continue
-            if (name == "." || name == ".." || name.endsWith(".uback.tmp")) continue
-            if (name.lowercase() in skipLowerNames) continue
-            val isDir = (entry.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
-            if (isDir) continue
-            if (entry.endOfFile != localSize) continue
+            if (lowerName in skipLowerNames) continue
+            val (actualName, cached) = pair
+            if (cached.sizeBytes != localSize) continue
 
             onStage("verifying")
-            val remotePath = joinSmbPath(normDir, name)
-            val hash = runCatching {
+            val remotePath = joinSmbPath(normDir, actualName)
+            val hash = cached.sha256 ?: runCatching {
                 computeRemoteSha256(share, remotePath, localSize, isCancelled, waitIfPaused)
-            }.getOrNull() ?: continue
+            }.getOrNull()?.also { cached.sha256 = it } ?: continue
             if (hash.equals(localSha256, ignoreCase = true)) {
-                return name
+                return actualName
             }
         }
         return null
@@ -390,11 +475,14 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                         }
                         val read = input.read(buffer)
                         if (read <= 0) break
+                        touchActivity()
                         out.write(buffer, 0, read)
+                        touchActivity()
                         uploaded += read
                         onBytesProgress(uploaded)
                     }
                     out.flush()
+                    touchActivity()
                 }
             }
         }
@@ -426,7 +514,9 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                 waitIfPaused()
                 if (isCancelled()) throw InterruptedException("Backup cancelled during verification")
                 val toRead = minOf(buffer.size.toLong(), expectedSize - offset).toInt()
+                touchActivity()
                 val read = remoteFile.read(buffer, offset, 0, toRead)
+                touchActivity()
                 if (read <= 0) {
                     throw IllegalStateException(
                         "Unexpected EOF reading $remotePath at offset $offset / $expectedSize",
@@ -452,6 +542,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                 if (isCancelled()) throw InterruptedException("Backup cancelled during hashing")
                 val read = input.read(buffer)
                 if (read <= 0) break
+                touchActivity()
                 digest.update(buffer, 0, read)
             }
         }
@@ -478,11 +569,13 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
     }
 
     private fun ensureDirectories(share: DiskShare, smbDirPath: String) {
-        if (smbDirPath.isBlank()) return
+        if (smbDirPath.isBlank() || smbDirPath in ensuredDirs) return
         val segments = smbDirPath.split('\\').filter { it.isNotBlank() }
         var current = ""
         for (segment in segments) {
             current = if (current.isEmpty()) segment else "$current\\$segment"
+            if (current in ensuredDirs) continue
+            touchActivity()
             if (!safeFolderExists(share, current)) {
                 try {
                     share.mkdir(current)
@@ -490,6 +583,8 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                     if (e.status != NtStatus.STATUS_OBJECT_NAME_COLLISION) throw e
                 }
             }
+            ensuredDirs.add(current)
+            touchActivity()
         }
     }
 
@@ -515,7 +610,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
             e.status == NtStatus.STATUS_OBJECT_PATH_NOT_FOUND
     }
 
-    override fun close() {
+    private fun closeConnectionOnly() {
         runCatching { diskShare?.close() }
         runCatching { session?.close() }
         runCatching { connection?.close() }
@@ -524,6 +619,12 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         session = null
         connection = null
         client = null
+    }
+
+    override fun close() {
+        closeConnectionOnly()
+        ensuredDirs.clear()
+        dirCache.clear()
     }
 
     companion object {

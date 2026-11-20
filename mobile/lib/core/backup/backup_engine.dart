@@ -83,7 +83,7 @@ class BackupEngine {
           continue;
         }
 
-        if (mode == BackupMode.crop) {
+        if (mode == BackupMode.crop && !item.isSnapshot && !item.isReadOnly) {
           snapshot(BackupRunState.running, 'cleaning_up', item.fileName);
           final cleaned = await exporter.cleanUpItem(item);
           if (!cleaned) {

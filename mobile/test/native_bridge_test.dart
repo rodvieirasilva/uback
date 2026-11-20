@@ -21,7 +21,7 @@ void main() {
         case 'getDeviceName':
           return 'Galaxy S23 FE';
         case 'getAppVersion':
-          return '1.2.3';
+          return '1.2.4';
         case 'checkPermissions':
         case 'requestMediaPermissions':
         case 'requestSnapshotPermissions':
@@ -58,12 +58,44 @@ void main() {
               'createdAtMs': DateTime(2024, 3, 15).millisecondsSinceEpoch,
               'mimeType': 'text/vcard',
               'isSnapshot': true,
+              'isReadOnly': false,
+            },
+            {
+              'id': 'wa-db-1',
+              'fileName': 'msgstore.db.crypt15',
+              'localPath': '/sdcard/Android/media/com.whatsapp/WhatsApp/Databases/msgstore.db.crypt15',
+              'sourceId': 'whatsapp.databases',
+              'sourceFolder': 'whatsapp/databases',
+              'sizeBytes': 4096,
+              'createdAtMs': DateTime(2024, 6, 1).millisecondsSinceEpoch,
+              'mimeType': 'application/octet-stream',
+              'isSnapshot': false,
+              'isReadOnly': true,
+            },
+            {
+              'id': 'wa-delta-1',
+              'fileName': 'msgstore_delta_20261120_1_42.db',
+              'localPath': '/data/user/0/uback/cache/msgstore_delta_20261120_1_42.db',
+              'sourceId': 'whatsapp.deltas',
+              'sourceFolder': 'whatsapp/deltas',
+              'sizeBytes': 8192,
+              'createdAtMs': DateTime(2026, 11, 20).millisecondsSinceEpoch,
+              'mimeType': 'application/vnd.sqlite3',
+              'isSnapshot': true,
+              'isReadOnly': true,
+              'deltaScope': 'whatsapp',
+              'deltaMaxRowId': 42,
             },
           ];
         case 'getSourceStats':
           return {
             'camera.images': {'count': 42, 'totalBytes': 102400},
             'custom.dji': {'count': 3, 'totalBytes': 9000},
+            'whatsapp.deltas': {
+              'count': 0,
+              'totalBytes': 0,
+              'statusNote': 'Set 64-digit key in Settings',
+            },
           };
         case 'testConnection':
           return {'ok': true, 'message': 'Connected to smb://nas/safe'};
@@ -111,7 +143,7 @@ void main() {
     );
 
     expect(await bridge.getDeviceName(), 'Galaxy S23 FE');
-    expect(await bridge.getAppVersion(), '1.2.3');
+    expect(await bridge.getAppVersion(), '1.2.4');
 
     final perms = await bridge.checkPermissions();
     expect(perms.hasMedia, isTrue);
@@ -126,18 +158,29 @@ void main() {
     expect(picked?.relativePath, 'DJI/Media');
 
     final items = await bridge.discoverMedia(
-      enabledSourceIds: {'camera.images', 'snapshots.contacts'},
+      enabledSourceIds: {'camera.images', 'snapshots.contacts', 'whatsapp.deltas'},
       customFolders: custom,
       perSourceLimit: 5,
+      whatsappKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     );
-    expect(items.length, 2);
+    expect(items.length, 4);
     expect(items.first.toMap()['fileName'], 'IMG_001.jpg');
-    expect(items.last.isSnapshot, isTrue);
-    expect(items.last.toMap()['isSnapshot'], isTrue);
+    expect(items[1].isSnapshot, isTrue);
+    expect(items[1].toMap()['isSnapshot'], isTrue);
+    expect(items[2].isReadOnly, isTrue);
+    expect(items[2].toMap()['isReadOnly'], isTrue);
+    expect(items.last.deltaScope, 'whatsapp');
+    expect(items.last.deltaMaxRowId, 42);
+    expect(items.last.toMap()['deltaScope'], 'whatsapp');
+    expect(items.last.toMap()['deltaMaxRowId'], 42);
 
-    final stats = await bridge.getSourceStats(customFolders: custom);
+    final stats = await bridge.getSourceStats(
+      customFolders: custom,
+      whatsappKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    );
     expect(stats['camera.images']?.fileCount, 42);
     expect(stats['custom.dji']?.totalBytes, 9000);
+    expect(stats['whatsapp.deltas']?.statusNote, 'Set 64-digit key in Settings');
 
     final conn = await bridge.testConnection(settings);
     expect(conn.ok, isTrue);

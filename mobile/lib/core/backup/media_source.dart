@@ -7,17 +7,20 @@ class MediaSourceStats {
   final int fileCount;
   final int totalBytes;
   final bool permissionRequired;
+  final String? statusNote;
 
   const MediaSourceStats({
     this.fileCount = 0,
     this.totalBytes = 0,
     this.permissionRequired = false,
+    this.statusNote,
   });
 
   factory MediaSourceStats.fromMap(Map<Object?, Object?> map) => MediaSourceStats(
         fileCount: (map['count'] as num?)?.toInt() ?? 0,
         totalBytes: (map['totalBytes'] as num?)?.toInt() ?? 0,
         permissionRequired: (map['permissionRequired'] as bool?) ?? false,
+        statusNote: map['statusNote'] as String?,
       );
 
   MediaSourceStats operator +(MediaSourceStats other) => MediaSourceStats(
@@ -47,6 +50,9 @@ abstract class MediaSource {
   }
 
   MediaSourceStats aggregateStats(Map<String, MediaSourceStats> leafStats) {
+    if (!isGroup) {
+      return leafStats[id] ?? const MediaSourceStats();
+    }
     var total = const MediaSourceStats();
     for (final leaf in leafIds) {
       final stat = leafStats[leaf];
@@ -113,6 +119,8 @@ const Set<String> defaultEnabledMediaSourceIds = {
   'whatsapp.sent.videos',
   'whatsapp.sent.audios',
   'whatsapp.sent.documents',
+  'whatsapp.databases',
+  'whatsapp.deltas',
   'recordings',
   'documents',
   'editors.lightroom',
@@ -137,7 +145,7 @@ BridgeMediaSource _whatsAppTree(
     bridge: bridge,
     id: idPrefix,
     displayName: title,
-    subtitle: 'Received & Sent media and documents',
+    subtitle: 'Received, Sent & Chat Databases',
     destinationSlug: remotePrefix,
     children: [
       BridgeMediaSource(
@@ -213,6 +221,20 @@ BridgeMediaSource _whatsAppTree(
             destinationSlug: '$remotePrefix/sent/documents',
           ),
         ],
+      ),
+      BridgeMediaSource(
+        bridge: bridge,
+        id: '$idPrefix.databases',
+        displayName: 'Chat Databases (Read-Only)',
+        subtitle: '$title Databases & Backups (never deleted)',
+        destinationSlug: '$remotePrefix/databases',
+      ),
+      BridgeMediaSource(
+        bridge: bridge,
+        id: '$idPrefix.deltas',
+        displayName: 'Incremental Chat Deltas (.db)',
+        subtitle: 'Decrypts .crypt15 with 64-digit key; exports only new messages',
+        destinationSlug: '$remotePrefix/deltas',
       ),
     ],
   );

@@ -78,6 +78,7 @@ void main() {
       port: 4455,
       username: 'alice',
       password: 'secret',
+      whatsappKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       enabledSourceIds: {'camera.images', 'recordings', 'downloads.documents', dji.id},
       customFolders: [dji],
     );
@@ -95,6 +96,10 @@ void main() {
     expect(reloaded.username, 'alice');
     expect(reloaded.password, 'secret');
     expect(
+      reloaded.whatsappKey,
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    );
+    expect(
       reloaded.enabledSourceIds,
       {'camera.images', 'recordings', 'downloads.documents', 'custom.dji-media'},
     );
@@ -104,6 +109,7 @@ void main() {
 
     final restored = await repo.resetToDefaults();
     expect(restored.host, '192.168.1.50');
+    expect(restored.whatsappKey, '');
     expect(restored.lastMode, BackupMode.copy);
     expect(restored.lastLimitType, BackupLimitType.all);
     expect(restored.customFolders, isEmpty);
@@ -112,6 +118,7 @@ void main() {
     final afterReset = await repo.load();
     expect(afterReset.host, '192.168.1.50');
     expect(afterReset.password, 'default_password');
+    expect(afterReset.whatsappKey, '');
     expect(afterReset.lastMode, BackupMode.copy);
     expect(afterReset.customFolders, isEmpty);
     expect(afterReset.enabledSourceIds, defaultEnabledMediaSourceIds);

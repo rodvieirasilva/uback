@@ -15,7 +15,7 @@ class _AdaptiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Galaxy Z Fold';
   @override
-  Future<String> getAppVersion() async => '1.2.3';
+  Future<String> getAppVersion() async => '1.2.4';
   @override
   Future<PermissionState> checkPermissions() async =>
       const PermissionState(hasMedia: true, hasAllFiles: true, hasNotifications: true);
@@ -33,11 +33,13 @@ class _AdaptiveFakeBridge implements NativeBackupBridge {
     required Set<String> enabledSourceIds,
     List<CustomFolderConfig> customFolders = const [],
     int? perSourceLimit,
+    String? whatsappKey,
   }) async =>
       const [];
   @override
   Future<Map<String, MediaSourceStats>> getSourceStats({
     List<CustomFolderConfig> customFolders = const [],
+    String? whatsappKey,
   }) async =>
       const {
         'camera.images': MediaSourceStats(fileCount: 25, totalBytes: 50 * 1024 * 1024),

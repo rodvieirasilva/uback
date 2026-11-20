@@ -214,6 +214,8 @@ class _SourceNodeRow extends StatelessWidget {
       (_, true, true) when stat.fileCount == 0 => 'Permission required • Toggle to grant',
       (_, true, true) =>
         '${stat.fileCount} files • ${PathSanitizer.formatBytes(stat.totalBytes)} • Permission needed',
+      (_, true, false) when stat.fileCount == 0 && (stat.statusNote?.isNotEmpty ?? false) =>
+        stat.statusNote!,
       (_, true, false) => '${stat.fileCount} files • ${PathSanitizer.formatBytes(stat.totalBytes)}',
       _ => node.subtitle,
     };

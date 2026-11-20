@@ -93,7 +93,8 @@ void main() {
     final fileImages = find.byWidgetPredicate((w) => w is Image && w.image is FileImage);
     expect(fileImages, findsNothing);
 
-    // Verify hierarchical Media Sources exist and estimate the 11 built-in seeded files (incl. 1 duplicate-hash photo)
+    // Verify hierarchical Media Sources exist and estimate the 14 built-in seeded items
+    // (10 unique media/doc + 1 duplicate-hash photo + 2 read-only WhatsApp DB files + 1 incremental WA delta)
     expect(find.byKey(AppTestKeys.sourceToggle('camera')), findsOneWidget);
     expect(find.byKey(AppTestKeys.sourceToggle('screenshots')), findsOneWidget);
     expect(find.byKey(AppTestKeys.sourceToggle('screen_recordings')), findsOneWidget);
@@ -101,21 +102,23 @@ void main() {
     expect(find.byKey(AppTestKeys.sourceToggle('documents')), findsOneWidget);
     expect(find.byKey(AppTestKeys.sourceToggle('downloads')), findsOneWidget);
     expect(find.byKey(AppTestKeys.sourceToggle('snapshots')), findsOneWidget);
-    await _waitForTextContains(tester, AppTestKeys.mediaSourcesSummary, 'Selected: 11 files');
+    await _waitForTextContains(tester, AppTestKeys.mediaSourcesSummary, 'Selected: 14 files');
 
     // Verify Device Snapshots shows non-zero Contacts + SMS + Call Logs (3 files) and toggle it ON
     await _waitForTextContains(tester, AppTestKeys.sourceStats('snapshots'), '3 files');
     await tester.ensureVisible(find.byKey(AppTestKeys.sourceToggle('snapshots')));
     await tester.tap(find.byKey(AppTestKeys.sourceToggle('snapshots')));
     await tester.pumpAndSettle();
-    await _waitForTextContains(tester, AppTestKeys.mediaSourcesSummary, 'Selected: 14 files');
+    await _waitForTextContains(tester, AppTestKeys.mediaSourcesSummary, 'Selected: 17 files');
 
-    // Verify expanding WhatsApp -> Received reveals Images/Videos/Audios/Documents
+    // Verify expanding WhatsApp reveals Received, Sent, Chat Databases, and Incremental Chat Deltas
     await tester.ensureVisible(find.byKey(AppTestKeys.sourceExpand('whatsapp')));
     await tester.tap(find.byKey(AppTestKeys.sourceExpand('whatsapp')));
     await tester.pumpAndSettle();
     expect(find.byKey(AppTestKeys.sourceExpand('whatsapp.sent')), findsOneWidget);
     expect(find.byKey(AppTestKeys.sourceExpand('whatsapp.received')), findsOneWidget);
+    expect(find.byKey(AppTestKeys.sourceToggle('whatsapp.databases')), findsOneWidget);
+    expect(find.byKey(AppTestKeys.sourceToggle('whatsapp.deltas')), findsOneWidget);
 
     // 1. Open Settings -> confirm Destination Type, add Custom Folder (DJI/Media), and Test Connection
     await tester.tap(find.byKey(AppTestKeys.openSettings));
@@ -148,8 +151,8 @@ void main() {
     await tester.tap(find.byKey(AppTestKeys.settingsSave));
     await _waitForFinder(tester, find.byKey(AppTestKeys.modeCopy));
 
-    // Confirm Custom Folder bumped live count from 14 -> 15 files, then collapse Media Sources
-    await _waitForTextContains(tester, AppTestKeys.mediaSourcesSummary, 'Selected: 15 files');
+    // Confirm Custom Folder bumped live count from 17 -> 18 files, then collapse Media Sources
+    await _waitForTextContains(tester, AppTestKeys.mediaSourcesSummary, 'Selected: 18 files');
     await tester.ensureVisible(find.byKey(AppTestKeys.mediaSourcesCollapse));
     await tester.tap(find.byKey(AppTestKeys.mediaSourcesCollapse));
     await tester.pumpAndSettle();
@@ -194,7 +197,7 @@ void main() {
       '3',
     );
     expect(find.byKey(AppTestKeys.sourceToggle('camera')), findsNothing);
-    await _waitForTextContains(tester, AppTestKeys.mediaSourcesSummary, 'Selected: 15 files');
+    await _waitForTextContains(tester, AppTestKeys.mediaSourcesSummary, 'Selected: 18 files');
 
     // Expand Media Sources and verify custom folder + WhatsApp expanded sub-group were restored
     await tester.ensureVisible(find.byKey(AppTestKeys.mediaSourcesCollapse));
@@ -231,37 +234,52 @@ void main() {
           expect(tester.widget<Text>(find.byKey(AppTestKeys.statusState)).data, 'Paused');
           await tester.tap(find.byKey(AppTestKeys.resumeBackup));
           await tester.pump(const Duration(milliseconds: 250));
+
+          // Simulate locking the phone screen and alternating between other apps mid-backup:
+          // cycle through inactive -> hidden -> paused (while BackupForegroundService transfers
+          // in the background) -> resumed, twice, verifying zero UI freeze or dropped progress.
+          for (var cycle = 0; cycle < 2; cycle++) {
+            tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+            tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+            tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+            tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+            tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+            tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+            await tester.pump(const Duration(milliseconds: 250));
+          }
           break;
         }
       }
     }
 
-    await _waitForCompleted(tester, expectedTotal: 15, expectedSkipped: 3);
+    await _waitForCompleted(tester, expectedTotal: 18, expectedSkipped: 3);
 
     expect(tester.widget<Text>(find.byKey(AppTestKeys.statusState)).data, 'Completed');
     expect(find.byKey(AppTestKeys.statElapsed), findsOneWidget);
     expect(tester.widget<Text>(find.byKey(AppTestKeys.statEta)).data, 'ETA: Done');
-    expect(tester.widget<Text>(find.byKey(AppTestKeys.statTotal)).data, '15');
+    expect(tester.widget<Text>(find.byKey(AppTestKeys.statTotal)).data, '18');
     expect(tester.widget<Text>(find.byKey(AppTestKeys.statSkipped)).data, '3');
-    expect(tester.widget<Text>(find.byKey(AppTestKeys.statTransferred)).data, '12');
+    expect(tester.widget<Text>(find.byKey(AppTestKeys.statTransferred)).data, '15');
     expect(tester.widget<Text>(find.byKey(AppTestKeys.statRemaining)).data, '0');
     expect(tester.widget<Text>(find.byKey(AppTestKeys.statFailed)).data, '0');
 
-    // 4. Crop Mode + All files -> verifies all 15 on SMB, deletes 12 media/doc files locally
-    // (including verified duplicate), and keeps Download + real Contacts/SMS/Call Logs strictly untouched!
+    // 4. Crop Mode + All files -> WhatsApp delta watermark already committed at _id=3 so 0 new deltas
+    // are generated (proving true incremental non-duplication!), verifies remaining 17 on SMB, deletes
+    // 12 media/doc files locally, and keeps Download + read-only WhatsApp DBs + Contacts/SMS/Call Logs untouched!
     await tester.ensureVisible(find.byKey(AppTestKeys.modeCrop));
     await tester.tap(find.byKey(AppTestKeys.modeCrop));
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.byKey(AppTestKeys.startBackup));
     await tester.tap(find.byKey(AppTestKeys.startBackup));
-    await _waitForCompleted(tester, expectedTotal: 15, expectedSkipped: 15);
+    await _waitForCompleted(tester, expectedTotal: 17, expectedSkipped: 17);
 
     expect(tester.widget<Text>(find.byKey(AppTestKeys.statusState)).data, 'Completed');
     expect(find.byKey(AppTestKeys.statElapsed), findsOneWidget);
     expect(tester.widget<Text>(find.byKey(AppTestKeys.statEta)).data, 'ETA: Done');
-    expect(tester.widget<Text>(find.byKey(AppTestKeys.statTotal)).data, '15');
-    expect(tester.widget<Text>(find.byKey(AppTestKeys.statSkipped)).data, '15');
+    expect(tester.widget<Text>(find.byKey(AppTestKeys.statTotal)).data, '17');
+    expect(tester.widget<Text>(find.byKey(AppTestKeys.statSkipped)).data, '17');
     expect(tester.widget<Text>(find.byKey(AppTestKeys.statFailed)).data, '0');
     expect(tester.widget<Text>(find.byKey(AppTestKeys.statRemaining)).data, '0');
 

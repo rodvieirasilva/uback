@@ -55,6 +55,7 @@ object MediaSourceClassifier {
         "whatsapp.sent.videos",
         "whatsapp.sent.audios",
         "whatsapp.sent.documents",
+        "whatsapp.databases",
         "whatsapp_business.received.images",
         "whatsapp_business.received.videos",
         "whatsapp_business.received.audios",
@@ -63,6 +64,7 @@ object MediaSourceClassifier {
         "whatsapp_business.sent.videos",
         "whatsapp_business.sent.audios",
         "whatsapp_business.sent.documents",
+        "whatsapp_business.databases",
         "telegram.images",
         "telegram.videos",
         "telegram.audios",
@@ -84,7 +86,22 @@ object MediaSourceClassifier {
         "snapshots.call_logs",
     )
 
-    val ALL_BUILTIN_SOURCE_IDS: Set<String> = BUILTIN_FILE_SOURCE_IDS + SNAPSHOT_SOURCE_IDS
+    val DELTA_SOURCE_IDS: Set<String> = setOf(
+        "whatsapp.deltas",
+        "whatsapp_business.deltas",
+    )
+
+    /**
+     * Sources that live on device storage and MUST NEVER be deleted even in Crop Mode
+     * (e.g., WhatsApp encrypted chat databases & local backups).
+     */
+    val READ_ONLY_SOURCE_IDS: Set<String> = setOf(
+        "whatsapp.databases",
+        "whatsapp_business.databases",
+    )
+
+    val ALL_BUILTIN_SOURCE_IDS: Set<String> =
+        BUILTIN_FILE_SOURCE_IDS + SNAPSHOT_SOURCE_IDS + DELTA_SOURCE_IDS
 
     private val IMAGE_EXTS = setOf("jpg", "jpeg", "png", "webp", "heic", "heif", "gif", "dng", "bmp", "tif", "tiff")
     private val VIDEO_EXTS = setOf("mp4", "mkv", "mov", "3gp", "webm", "avi", "m4v")
@@ -214,6 +231,13 @@ object MediaSourceClassifier {
         idPrefix: String,
         remotePrefix: String,
     ): ClassifiedSource? {
+        if (norm.contains("/databases") || norm.endsWith("/databases") || norm == "databases") {
+            return ClassifiedSource("$idPrefix.databases", "$remotePrefix/databases")
+        }
+        if (norm.contains("/backups") || norm.endsWith("/backups") || norm == "backups") {
+            return ClassifiedSource("$idPrefix.databases", "$remotePrefix/backups")
+        }
+
         val isSent = norm.contains("/sent/") || norm.endsWith("/sent")
         val dir = if (isSent) "sent" else "received"
 
@@ -300,16 +324,22 @@ object MediaSourceClassifier {
             "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Audio",
             "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Voice Notes",
             "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents",
+            "Android/media/com.whatsapp/WhatsApp/Databases",
+            "Android/media/com.whatsapp/WhatsApp/Backups",
             "WhatsApp/Media/WhatsApp Images",
             "WhatsApp/Media/WhatsApp Video",
             "WhatsApp/Media/WhatsApp Audio",
             "WhatsApp/Media/WhatsApp Voice Notes",
             "WhatsApp/Media/WhatsApp Documents",
+            "WhatsApp/Databases",
+            "WhatsApp/Backups",
             "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images",
             "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video",
             "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Audio",
             "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Voice Notes",
             "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Documents",
+            "Android/media/com.whatsapp.w4b/WhatsApp Business/Databases",
+            "Android/media/com.whatsapp.w4b/WhatsApp Business/Backups",
             "Android/media/org.telegram.messenger/Telegram",
             "Pictures/Telegram",
             "Movies/Telegram",

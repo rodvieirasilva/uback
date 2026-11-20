@@ -96,4 +96,36 @@ void main() {
     expect(exporter.cleanedUpIds, ['2']);
     expect(result.errors.single.fileName, 'SS_OLD.png');
   });
+
+  test('Crop Mode NEVER deletes read-only sources such as WhatsApp Chat Databases', () async {
+    final items = [
+      ...sampleItems,
+      BackupItem(
+        id: 'wa_db',
+        fileName: 'msgstore.db.crypt15',
+        localPath: '/sdcard/Android/media/com.whatsapp/WhatsApp/Databases/msgstore.db.crypt15',
+        sourceId: 'whatsapp.databases',
+        sourceFolder: 'whatsapp/databases',
+        sizeBytes: 4096,
+        createdAt: DateTime(2024, 6, 1),
+        mimeType: 'application/octet-stream',
+        isReadOnly: true,
+      ),
+    ];
+    final exporter = _FakeMediaExporter(items);
+    final engine = BackupEngine(exporter: exporter);
+
+    final result = await engine.run(
+      mode: BackupMode.crop,
+      basePath: 'local/phone',
+      deviceFolder: 'rodrigo',
+    );
+
+    expect(result.state, BackupRunState.completed);
+    expect(result.transferred, 3);
+    expect(result.failed, 0);
+    // Normal verified files ('1', '2') are deleted, while read-only 'wa_db' is NEVER deleted!
+    expect(exporter.cleanedUpIds, ['1', '2']);
+    expect(exporter.backedUpPaths, contains('local/phone/rodrigo/whatsapp/databases/2024/06/msgstore.db.crypt15'));
+  });
 }

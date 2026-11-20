@@ -5,6 +5,7 @@ config.toml
 .env.*
 dart_defines.json
 mobile/dart_defines.json
+dist-local/
 
 # OS / Editor / Python cache
 .DS_Store

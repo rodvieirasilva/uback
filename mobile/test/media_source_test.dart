@@ -13,10 +13,11 @@ class _NoopBridge implements NativeBackupBridge {
     required Set<String> enabledSourceIds,
     List<CustomFolderConfig> customFolders = const [],
     int? perSourceLimit,
+    String? whatsappKey,
   }) async =>
       const [];
   @override
-  Future<String> getAppVersion() async => '1.2.3';
+  Future<String> getAppVersion() async => '1.2.4';
   @override
   Future<BackupProgress> getBackupStatus() async => const BackupProgress();
   @override
@@ -24,6 +25,7 @@ class _NoopBridge implements NativeBackupBridge {
   @override
   Future<Map<String, MediaSourceStats>> getSourceStats({
     List<CustomFolderConfig> customFolders = const [],
+    String? whatsappKey,
   }) async =>
       const {};
   @override
@@ -78,7 +80,10 @@ void main() {
     expect(camera.leafIds, {'camera.images', 'camera.videos', 'camera.raw'});
 
     final whatsapp = sources.firstWhere((s) => s.id == 'whatsapp');
-    expect(whatsapp.children.map((c) => c.id).toList(), ['whatsapp.received', 'whatsapp.sent']);
+    expect(
+      whatsapp.children.map((c) => c.id).toList(),
+      ['whatsapp.received', 'whatsapp.sent', 'whatsapp.databases', 'whatsapp.deltas'],
+    );
     expect(whatsapp.leafIds, {
       'whatsapp.received.images',
       'whatsapp.received.videos',
@@ -88,7 +93,13 @@ void main() {
       'whatsapp.sent.videos',
       'whatsapp.sent.audios',
       'whatsapp.sent.documents',
+      'whatsapp.databases',
+      'whatsapp.deltas',
     });
+    expect(defaultEnabledMediaSourceIds.contains('whatsapp.databases'), isTrue);
+    expect(defaultEnabledMediaSourceIds.contains('whatsapp.deltas'), isTrue);
+    expect(defaultEnabledMediaSourceIds.contains('whatsapp_business.databases'), isFalse);
+    expect(defaultEnabledMediaSourceIds.contains('whatsapp_business.deltas'), isFalse);
 
     final snapshots = sources.firstWhere((s) => s.id == 'snapshots');
     expect(snapshots.leafIds, snapshotSourceIds);
@@ -144,5 +155,15 @@ void main() {
     expect(snapAgg.fileCount, 1);
     expect(snapAgg.totalBytes, 512);
     expect(snapAgg.permissionRequired, isTrue);
+
+    final deltasLeaf = whatsapp.children.firstWhere((c) => c.id == 'whatsapp.deltas');
+    final deltaStat = deltasLeaf.aggregateStats({
+      'whatsapp.deltas': MediaSourceStats.fromMap({
+        'count': 0,
+        'totalBytes': 0,
+        'statusNote': 'Set 64-digit key in Settings',
+      }),
+    });
+    expect(deltaStat.statusNote, 'Set 64-digit key in Settings');
   });
 }

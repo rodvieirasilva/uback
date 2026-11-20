@@ -57,6 +57,7 @@ abstract final class AppTestKeys {
   static const String settingsUsernameId = 'settings_username_input';
   static const String settingsPasswordId = 'settings_password_input';
   static const String settingsDomainId = 'settings_domain_input';
+  static const String settingsWhatsappKeyId = 'settings_whatsapp_key_input';
   static const String settingsDeviceOverrideId = 'settings_device_override_input';
   static const String settingsSaveId = 'settings_save_btn';
   static const String settingsResetDefaultsId = 'settings_reset_defaults_btn';
@@ -115,6 +116,7 @@ abstract final class AppTestKeys {
   static const ValueKey<String> settingsUsername = ValueKey(settingsUsernameId);
   static const ValueKey<String> settingsPassword = ValueKey(settingsPasswordId);
   static const ValueKey<String> settingsDomain = ValueKey(settingsDomainId);
+  static const ValueKey<String> settingsWhatsappKey = ValueKey(settingsWhatsappKeyId);
   static const ValueKey<String> settingsDeviceOverride = ValueKey(settingsDeviceOverrideId);
   static const ValueKey<String> settingsSave = ValueKey(settingsSaveId);
   static const ValueKey<String> settingsResetDefaults = ValueKey(settingsResetDefaultsId);

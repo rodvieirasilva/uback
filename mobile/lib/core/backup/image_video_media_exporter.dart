@@ -29,6 +29,7 @@ class ImageVideoMediaExporter implements MediaExporter {
       enabledSourceIds: settings.enabledSourceIds,
       customFolders: settings.customFolders,
       perSourceLimit: limit?.maxFiles,
+      whatsappKey: settings.whatsappKey,
     );
     return BackupPlanner.plan(discovered, limit: limit);
   }
