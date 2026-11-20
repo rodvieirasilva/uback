@@ -61,9 +61,9 @@ cleanup() {
 trap cleanup EXIT
 
 ensure_emulator() {
-  bash "$REPO_ROOT/scripts/ensure_avd.sh"
   EMU_SERIAL="$(adb devices | awk 'NR>1 && $2=="device" && $1 ~ /^emulator-/ {print $1; exit}')"
   if [[ -z "$EMU_SERIAL" ]]; then
+    bash "$REPO_ROOT/scripts/ensure_avd.sh"
     echo "==> Starting headless Android Emulator ($AVD_NAME)..."
     emulator -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim \
       -gpu swiftshader_indirect -no-snapshot-save >"$TMP_DIR/emulator.log" 2>&1 &

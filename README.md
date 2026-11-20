@@ -32,7 +32,22 @@ See [docs/RELEASE.md](docs/RELEASE.md) for the release process and [AGENTS.md](A
 - **Adaptive System Theme**: Material 3 Light and Dark themes automatically follow your phone's system theme.
 - **Compile-Time Defaults + In-App Settings**: Local gitignored `config.toml` injects default destination settings at build time, while Settings lets you edit or override them at runtime (credentials stored with Android secure storage).
 
-## Quick Start
+## Install (Prebuilt Android APK)
+
+1. Download the latest `uback-vX.Y.Z.apk` (and optional `.sha256` file) from **[GitHub Releases](https://github.com/rodvieirasilva/uback/releases/latest)**.
+2. *(Optional)* Verify the download integrity:
+   ```bash
+   sha256sum -c uback-vX.Y.Z.apk.sha256
+   ```
+3. Install on your Android phone:
+   - **Directly on phone**: open the downloaded `.apk` file and allow installation from your browser/file manager.
+   - **Via ADB (USB or Wireless ADB)**:
+     ```bash
+     adb install -r uback-vX.Y.Z.apk
+     ```
+4. Launch **UBack**, open **Settings** (gear icon), configure your **SMB NAS** host, share, base path, username, and password, tap **Test Connection** -> **Save**, and grant media + **All files access** permissions (required for Crop Mode and WhatsApp Sent / Voice Notes).
+
+## Quick Start (Build from Source)
 
 ### 1. Install Toolchain with `mise`
 ```bash
