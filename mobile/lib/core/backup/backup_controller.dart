@@ -34,6 +34,8 @@ class BackupController extends ChangeNotifier {
   bool _initialized = false;
   bool _disposed = false;
   String? _statusMessage;
+  List<BackupItem> _activeRunQueue = const [];
+  List<BackupItem> _resumableQueue = const [];
 
   BackupController({
     required this._settingsRepo,
@@ -76,6 +78,10 @@ class BackupController extends ChangeNotifier {
   bool get initialized => _initialized;
   String? get statusMessage => _statusMessage;
   MediaExporter get exporter => _exporter;
+  List<BackupItem> get resumableQueue => _resumableQueue;
+  bool get canContinueFromStopped => !_progress.isActive && _resumableQueue.isNotEmpty;
+  int get resumableFileCount => _resumableQueue.length;
+  int get resumableTotalBytes => _resumableQueue.fold<int>(0, (sum, i) => sum + i.sizeBytes);
 
   void _rebuildMediaSources() {
     if (_customInjectedSources != null) return;
@@ -123,6 +129,7 @@ class BackupController extends ChangeNotifier {
 
   Future<void> init() async {
     _settings = await _settingsRepo.load();
+    _resumableQueue = await _settingsRepo.loadCheckpointQueue();
     _rebuildMediaSources();
 
     try {
@@ -145,6 +152,7 @@ class BackupController extends ChangeNotifier {
     _progressSub?.cancel();
     _progressSub = _bridge.progressStream().listen((event) {
       _progress = event;
+      _updateCheckpointFromProgress(event);
       notifyListeners();
       if (event.state == BackupRunState.completed ||
           event.state == BackupRunState.cancelled ||
@@ -264,6 +272,24 @@ class BackupController extends ChangeNotifier {
     unawaited(refreshSourceStats());
   }
 
+  void _updateCheckpointFromProgress(BackupProgress event) {
+    if (_activeRunQueue.isEmpty) return;
+    final done = (event.transferred + event.skipped).clamp(0, _activeRunQueue.length);
+    if (event.state == BackupRunState.completed && event.failed == 0 && done >= _activeRunQueue.length) {
+      _activeRunQueue = const [];
+      _resumableQueue = const [];
+      unawaited(_settingsRepo.clearCheckpointQueue());
+      return;
+    }
+    if (done > 0 && done < _activeRunQueue.length) {
+      final remainingSlice = _activeRunQueue.sublist(done);
+      if (remainingSlice.length != _resumableQueue.length) {
+        _resumableQueue = List.unmodifiable(remainingSlice);
+        unawaited(_settingsRepo.saveCheckpointQueue(_resumableQueue));
+      }
+    }
+  }
+
   Future<void> _pollActiveBackupStatus() async {
     try {
       final latest = await _bridge.getBackupStatus();
@@ -273,6 +299,7 @@ class BackupController extends ChangeNotifier {
       }
       final wasActive = _progress.isActive;
       _progress = latest;
+      _updateCheckpointFromProgress(latest);
       notifyListeners();
       if (wasActive && !latest.isActive && _permissions.hasMedia) {
         unawaited(refreshSourceStats());
@@ -355,6 +382,8 @@ class BackupController extends ChangeNotifier {
 
   Future<AppSettings> resetSettingsToDefaults() async {
     _settings = await _settingsRepo.resetToDefaults();
+    _activeRunQueue = const [];
+    _resumableQueue = const [];
     _rebuildMediaSources();
     _connectionResult = null;
     notifyListeners();
@@ -449,6 +478,9 @@ class BackupController extends ChangeNotifier {
       final planned = await _exporter.discoverItems(limit: currentLimit);
 
       if (planned.isEmpty) {
+        _activeRunQueue = const [];
+        _resumableQueue = const [];
+        await _settingsRepo.clearCheckpointQueue();
         _progress = const BackupProgress(
           state: BackupRunState.completed,
           stage: 'completed',
@@ -465,22 +497,7 @@ class BackupController extends ChangeNotifier {
         return;
       }
 
-      final totalBytes = planned.fold<int>(0, (sum, i) => sum + i.sizeBytes);
-      _progress = BackupProgress(
-        state: BackupRunState.running,
-        stage: 'connecting',
-        total: planned.length,
-        remaining: planned.length,
-        totalBytes: totalBytes,
-      );
-      notifyListeners();
-
-      await dest.startBackup(
-        settings: _settings,
-        mode: mode,
-        deviceFolder: resolvedDeviceFolder,
-        items: planned,
-      );
+      await _launchPlannedItems(planned);
     } catch (e) {
       _progress = BackupProgress(
         state: BackupRunState.error,
@@ -489,6 +506,71 @@ class BackupController extends ChangeNotifier {
       );
       notifyListeners();
     }
+  }
+
+  /// Continues a stopped or interrupted backup directly from the remaining checkpoint queue
+  /// without re-scanning or re-hashing files that already completed before the stop.
+  Future<void> continueBackup() async {
+    if (_progress.isActive || _resumableQueue.isEmpty) return;
+    _statusMessage = null;
+
+    final dest = activeDestination;
+    if (!dest.isConfigured(_settings)) {
+      _statusMessage = 'Configure ${dest.displayName} in Settings before backing up.';
+      notifyListeners();
+      return;
+    }
+
+    _permissions = await _bridge.checkPermissions();
+    if (!_permissions.hasMedia) {
+      _permissions = await _bridge.requestMediaPermissions();
+      if (!_permissions.hasMedia) {
+        _statusMessage = 'Media permission is required to continue backup.';
+        notifyListeners();
+        return;
+      }
+    }
+
+    if (mode == BackupMode.crop && !_permissions.hasAllFiles) {
+      _statusMessage =
+          'Crop Mode requires "All files access" permission so verified files can be deleted automatically.';
+      notifyListeners();
+      return;
+    }
+
+    try {
+      await _launchPlannedItems(List<BackupItem>.of(_resumableQueue));
+    } catch (e) {
+      _progress = BackupProgress(
+        state: BackupRunState.error,
+        stage: 'error',
+        errors: [BackupErrorEntry(fileName: 'Backup', message: e.toString())],
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<void> _launchPlannedItems(List<BackupItem> items) async {
+    _activeRunQueue = List.unmodifiable(items);
+    _resumableQueue = List.unmodifiable(items.where((i) => !i.isSnapshot));
+    await _settingsRepo.saveCheckpointQueue(_resumableQueue);
+
+    final totalBytes = items.fold<int>(0, (sum, i) => sum + i.sizeBytes);
+    _progress = BackupProgress(
+      state: BackupRunState.running,
+      stage: 'connecting',
+      total: items.length,
+      remaining: items.length,
+      totalBytes: totalBytes,
+    );
+    notifyListeners();
+
+    await activeDestination.startBackup(
+      settings: _settings,
+      mode: mode,
+      deviceFolder: resolvedDeviceFolder,
+      items: items,
+    );
   }
 
   Future<void> pauseBackup() async {

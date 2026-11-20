@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -24,7 +26,7 @@ class CompileTimeDefaults {
   static const String e2eDeviceOverride =
       String.fromEnvironment('UBACK_E2E_DEVICE_OVERRIDE', defaultValue: '');
   static const String appVersion =
-      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.4');
+      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.5');
   static const String buildDate =
       String.fromEnvironment('UBACK_BUILD_DATE', defaultValue: '');
   static const String gitSha =
@@ -243,6 +245,7 @@ class AppSettingsRepository {
   static const _kDeviceOverride = 'uback_device_override';
   static const _kEnabledSources = 'uback_enabled_sources';
   static const _kCustomFolders = 'uback_custom_folders';
+  static const _kCheckpointQueue = 'uback_checkpoint_queue';
 
   static const _kSecretUser = 'uback_smb_username';
   static const _kSecretPass = 'uback_smb_password';
@@ -397,6 +400,7 @@ class AppSettingsRepository {
       _kDeviceOverride,
       _kEnabledSources,
       _kCustomFolders,
+      _kCheckpointQueue,
     ]) {
       await _plainStore.delete(key);
     }
@@ -406,5 +410,38 @@ class AppSettingsRepository {
       await _secureStore.delete(_kSecretWhatsappKey);
     } catch (_) {}
     return _defaults;
+  }
+
+  /// Loads any unfinished backup queue persisted when a previous backup was stopped or interrupted.
+  Future<List<BackupItem>> loadCheckpointQueue() async {
+    final raw = await _plainStore.read(_kCheckpointQueue);
+    if (raw == null || raw.trim().isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map<Object?, Object?>>()
+          .map(BackupItem.fromMap)
+          .where((item) => item.localPath.isNotEmpty && !item.isSnapshot)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Persists the remaining unfinished [BackupItem] queue so the user can tap
+  /// "Continue From Last Stop" even after stopping or restarting the app.
+  Future<void> saveCheckpointQueue(List<BackupItem> items) async {
+    final persistable = items.where((i) => !i.isSnapshot).toList();
+    if (persistable.isEmpty) {
+      await _plainStore.delete(_kCheckpointQueue);
+      return;
+    }
+    final encoded = jsonEncode(persistable.map((e) => e.toMap()).toList());
+    await _plainStore.write(_kCheckpointQueue, encoded);
+  }
+
+  Future<void> clearCheckpointQueue() async {
+    await _plainStore.delete(_kCheckpointQueue);
   }
 }

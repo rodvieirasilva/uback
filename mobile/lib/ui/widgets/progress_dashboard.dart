@@ -180,6 +180,30 @@ class ProgressDashboard extends StatelessWidget {
                   style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                 ),
               ),
+              if (progress.showCurrentFileProgress) ...[
+                const SizedBox(height: 6),
+                LinearProgressIndicator(
+                  value: progress.currentFileFraction,
+                  minHeight: 5,
+                  borderRadius: BorderRadius.circular(3),
+                  color: cs.tertiary,
+                  backgroundColor: cs.surfaceContainerHighest,
+                ),
+                const SizedBox(height: 4),
+                withTestId(
+                  AppTestKeys.statusCurrentFileProgressId,
+                  child: Text(
+                    _currentFileProgressLabel(progress),
+                    key: AppTestKeys.statusCurrentFileProgress,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 11.5,
+                        ),
+                  ),
+                ),
+              ],
             ],
             if (progress.errors.isNotEmpty) ...[
               const SizedBox(height: 10),
@@ -197,6 +221,23 @@ class ProgressDashboard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _currentFileProgressLabel(BackupProgress progress) {
+    final stageVerb = switch (progress.stage) {
+      'hashing' => 'Hashing file',
+      'uploading' => 'Uploading file',
+      'verifying' => 'Verifying SHA-256',
+      'cleaning_up' => 'Freeing local space',
+      'retrying' => 'Retrying file',
+      'paused' => 'Paused on file',
+      _ => 'Processing file',
+    };
+    final pct = (progress.currentFileFraction * 100).round().clamp(0, 100);
+    return '$stageVerb: $pct% '
+        '(${PathSanitizer.formatBytes(progress.currentFileBytes)} / '
+        '${PathSanitizer.formatBytes(progress.currentFileTotalBytes)} • '
+        '${PathSanitizer.formatDuration(progress.currentFileElapsedMs)})';
   }
 
   static String _etaLabel(BackupProgress progress) {

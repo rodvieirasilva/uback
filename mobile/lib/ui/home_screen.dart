@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../core/backup/backup_controller.dart';
 import '../core/backup/media_exporter.dart';
 import '../core/testing/test_keys.dart';
+import '../core/utils/path_sanitizer.dart';
 import 'settings_screen.dart';
 import 'widgets/adaptive_layout.dart';
 import 'widgets/batch_limit_selector.dart';
@@ -210,7 +211,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _PrimaryActionButton(
           runState: ctrl.progress.state,
           mode: ctrl.mode,
+          canContinue: ctrl.canContinueFromStopped,
+          resumableFiles: ctrl.resumableFileCount,
+          resumableBytes: ctrl.resumableTotalBytes,
           onStart: ctrl.startBackup,
+          onContinue: ctrl.continueBackup,
           onPause: ctrl.pauseBackup,
           onResume: ctrl.resumeBackup,
           onStop: ctrl.stopBackup,
@@ -247,7 +252,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 class _PrimaryActionButton extends StatelessWidget {
   final BackupRunState runState;
   final BackupMode mode;
+  final bool canContinue;
+  final int resumableFiles;
+  final int resumableBytes;
   final VoidCallback onStart;
+  final VoidCallback onContinue;
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onStop;
@@ -255,7 +264,11 @@ class _PrimaryActionButton extends StatelessWidget {
   const _PrimaryActionButton({
     required this.runState,
     required this.mode,
+    required this.canContinue,
+    required this.resumableFiles,
+    required this.resumableBytes,
     required this.onStart,
+    required this.onContinue,
     required this.onPause,
     required this.onResume,
     required this.onStop,
@@ -329,20 +342,61 @@ class _PrimaryActionButton extends StatelessWidget {
       );
     }
 
-    return withTestId(
+    final startButton = withTestId(
       AppTestKeys.startBackupId,
-      child: FilledButton.icon(
-        key: AppTestKeys.startBackup,
-        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
-        onPressed: onStart,
-        icon: const Icon(Icons.backup_rounded),
-        label: Text(
-          mode == BackupMode.crop ? 'Start Crop Backup' : 'Start Copy Backup',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      child: canContinue
+          ? OutlinedButton.icon(
+              key: AppTestKeys.startBackup,
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              onPressed: onStart,
+              icon: const Icon(Icons.backup_rounded),
+              label: Text(
+                mode == BackupMode.crop ? 'Start Crop Backup' : 'Start Copy Backup',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            )
+          : FilledButton.icon(
+              key: AppTestKeys.startBackup,
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+              onPressed: onStart,
+              icon: const Icon(Icons.backup_rounded),
+              label: Text(
+                mode == BackupMode.crop ? 'Start Crop Backup' : 'Start Copy Backup',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            ),
+    );
+
+    if (!canContinue) {
+      return startButton;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        withTestId(
+          AppTestKeys.continueBackupId,
+          child: FilledButton.icon(
+            key: AppTestKeys.continueBackup,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+            onPressed: onContinue,
+            icon: const Icon(Icons.fast_forward_rounded),
+            label: Text(
+              'Continue From Last Stop ($resumableFiles files • '
+              '${PathSanitizer.formatBytes(resumableBytes)})',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
+            ),
+          ),
         ),
-      ),
+        const SizedBox(height: 10),
+        startButton,
+      ],
     );
   }
 }
