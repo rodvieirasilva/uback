@@ -46,15 +46,29 @@ See [docs/RELEASE.md](docs/RELEASE.md) for the release process and [AGENTS.md](A
 2. Open the downloaded `.apk` file and tap **Install** (allow installing unknown apps from your browser/file manager if prompted).
 3. Launch **UBack**, tap **Settings** (gear icon), enter your **SMB NAS** details (`Host`, `Share`, `Base Path`, `Username`, `Password`), tap **Test Connection** -> **Save**, and grant media + **All files access** permissions (needed for Crop Mode and WhatsApp Sent / Voice Notes).
 
+### If Google Play Protect Blocks Installation ("Requires sensitive permissions")
+
+Because UBack is sideloaded outside the Play Store and declares local backup permissions (`All files access`, plus opt-in `Contacts`, `SMS`, and `Call Logs` snapshots), **Google Play Protect** may warn or block installation on Android 13–16. Every release APK is built transparently in GitHub Actions from this repository with zero cloud telemetry.
+
+To install when Play Protect blocks it:
+- **Option 1 — "Install anyway" (when shown):** On the Play Protect dialog, tap **More details** -> **Install anyway**.
+- **Option 2 — Temporarily pause Play Protect (when "Install anyway" is hidden):**
+  1. Open **Google Play Store** -> tap your **Profile icon** (top-right) -> **Play Protect** -> **Settings** (gear icon).
+  2. Toggle off **Scan apps with Play Protect** temporarily.
+  3. Install `uback-latest.apk`.
+  4. Turn **Scan apps with Play Protect** back **ON** immediately after installation.
+- **Option 3 — Install via ADB (recommended if you have a PC, no Play Protect toggle needed):**
+  ```bash
+  adb install -r uback-latest.apk
+  ```
+- **Enabling SMS & Call Logs on sideloaded APKs (Android 13+ Restricted Settings):** If Android grays out **SMS** or **Call Logs** permissions, open **Settings → Apps → UBack → ⋮ (top-right) → Allow restricted settings**, then toggle **Device Snapshots** back on in UBack. *(ADB installs are exempt from this restriction automatically.)*
+
 <details>
-<summary>Optional: Verify SHA-256 checksum or install via ADB</summary>
+<summary>Optional: Verify SHA-256 checksum before installing</summary>
 
 ```bash
 # Download the versioned APK + checksum from Releases, then verify:
 sha256sum -c uback-vX.Y.Z.apk.sha256
-
-# Install over USB or Wireless ADB:
-adb install -r uback-latest.apk
 ```
 </details>
 
