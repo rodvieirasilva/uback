@@ -4,6 +4,22 @@ import 'package:material_ui/material_ui.dart';
 import 'package:uback/core/testing/test_keys.dart';
 import 'package:uback/main.dart';
 
+Future<void> _waitForFinder(
+  WidgetTester tester,
+  Finder finder, {
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    await tester.pump(const Duration(milliseconds: 250));
+    if (finder.evaluate().isNotEmpty) {
+      await tester.pumpAndSettle();
+      return;
+    }
+  }
+  fail('Timed out waiting for widget: $finder');
+}
+
 Future<void> _waitForCompleted(
   WidgetTester tester, {
   Duration timeout = const Duration(seconds: 120),
@@ -75,13 +91,13 @@ void main() {
 
     await tester.ensureVisible(find.byKey(AppTestKeys.settingsTestConnection));
     await tester.tap(find.byKey(AppTestKeys.settingsTestConnection));
-    await tester.pumpAndSettle(const Duration(seconds: 5));
+    await _waitForFinder(tester, find.byKey(AppTestKeys.connectionStatusBanner));
 
     expect(find.byKey(AppTestKeys.connectionStatusBanner), findsOneWidget);
     expect(find.textContaining('Connected to smb://10.0.2.2'), findsOneWidget);
 
     await tester.tap(find.byKey(AppTestKeys.settingsSave));
-    await tester.pumpAndSettle();
+    await _waitForFinder(tester, find.byKey(AppTestKeys.modeCopy));
 
     // 2. Copy Mode + Limit: Oldest 3 files globally across ALL sources
     // (WhatsApp Voice Note 2022 + Camera Image 2023-01 + Recorded Audio 2023-04)

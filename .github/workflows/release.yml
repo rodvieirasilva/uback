@@ -61,11 +61,12 @@ jobs:
       - name: Build clean Release APK (zero baked secrets)
         run: mise run build-release
 
-      - name: Prepare versioned APK & SHA-256 checksum
+      - name: Prepare versioned APK, latest alias & SHA-256 checksum
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           mkdir -p dist
           cp mobile/build/app/outputs/flutter-apk/app-release.apk "dist/uback-${TAG}.apk"
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "dist/uback-latest.apk"
           (cd dist && sha256sum "uback-${TAG}.apk" > "uback-${TAG}.apk.sha256")
           cat "dist/uback-${TAG}.apk.sha256"
 
@@ -76,6 +77,7 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           gh release create "$TAG" \
             "dist/uback-${TAG}.apk" \
+            "dist/uback-latest.apk" \
             "dist/uback-${TAG}.apk.sha256" \
             --title "UBack ${TAG}" \
             --generate-notes
