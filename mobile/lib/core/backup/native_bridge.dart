@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 
 import '../config/app_config.dart';
+import '../config/custom_folder_config.dart';
 import 'media_exporter.dart';
 import 'media_source.dart';
 
@@ -11,12 +12,16 @@ abstract class NativeBackupBridge {
   Future<String> getAppVersion();
   Future<PermissionState> checkPermissions();
   Future<PermissionState> requestMediaPermissions();
+  Future<PermissionState> requestSnapshotPermissions(Set<String> snapshotSources);
   Future<void> openAllFilesAccessSettings();
   Future<List<BackupItem>> discoverMedia({
     required Set<String> enabledSourceIds,
+    List<CustomFolderConfig> customFolders = const [],
     int? perSourceLimit,
   });
-  Future<Map<String, MediaSourceStats>> getSourceStats();
+  Future<Map<String, MediaSourceStats>> getSourceStats({
+    List<CustomFolderConfig> customFolders = const [],
+  });
   Future<ConnectionTestResult> testConnection(AppSettings settings);
   Future<void> startBackup({
     required AppSettings settings,
@@ -60,6 +65,16 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
   }
 
   @override
+  Future<PermissionState> requestSnapshotPermissions(Set<String> snapshotSources) async {
+    if (snapshotSources.isEmpty) return checkPermissions();
+    final res = await _methodChannel.invokeMapMethod<Object?, Object?>(
+      'requestSnapshotPermissions',
+      {'sources': snapshotSources.toList()},
+    );
+    return res == null ? const PermissionState() : PermissionState.fromMap(res);
+  }
+
+  @override
   Future<void> openAllFilesAccessSettings() async {
     await _methodChannel.invokeMethod<void>('openAllFilesAccessSettings');
   }
@@ -67,12 +82,14 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
   @override
   Future<List<BackupItem>> discoverMedia({
     required Set<String> enabledSourceIds,
+    List<CustomFolderConfig> customFolders = const [],
     int? perSourceLimit,
   }) async {
     final raw = await _methodChannel.invokeListMethod<Object?>(
       'discoverMedia',
       {
         'enabledSources': enabledSourceIds.toList(),
+        'customFolders': customFolders.map((f) => f.toMap()).toList(),
         'perSourceLimit': ?perSourceLimit,
       },
     );
@@ -84,8 +101,15 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
   }
 
   @override
-  Future<Map<String, MediaSourceStats>> getSourceStats() async {
-    final raw = await _methodChannel.invokeMapMethod<Object?, Object?>('getSourceStats');
+  Future<Map<String, MediaSourceStats>> getSourceStats({
+    List<CustomFolderConfig> customFolders = const [],
+  }) async {
+    final raw = await _methodChannel.invokeMapMethod<Object?, Object?>(
+      'getSourceStats',
+      {
+        'customFolders': customFolders.map((f) => f.toMap()).toList(),
+      },
+    );
     if (raw == null) return const {};
     final out = <String, MediaSourceStats>{};
     for (final entry in raw.entries) {

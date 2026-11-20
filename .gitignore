@@ -21,6 +21,8 @@ __pycache__/
 .packages
 build/
 **/build/
+coverage/
+**/coverage/
 **/.dart_tool/
 **/.flutter-plugins
 **/.flutter-plugins-dependencies

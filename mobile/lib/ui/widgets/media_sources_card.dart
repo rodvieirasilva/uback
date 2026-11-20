@@ -5,16 +5,20 @@ import '../../core/testing/test_keys.dart';
 import '../../core/utils/path_sanitizer.dart';
 
 /// Collapsible hierarchical Media Sources selector with tri-state group toggles,
-/// nested sub-items, and live non-blocking file count + byte size estimates.
-class MediaSourcesCard extends StatefulWidget {
+/// nested sub-items, persisted expand/collapse state, and live non-blocking estimates.
+class MediaSourcesCard extends StatelessWidget {
   final List<MediaSource> sources;
   final Set<String> enabledSourceIds;
+  final bool sectionExpanded;
+  final Set<String> expandedNodeIds;
   final Map<String, MediaSourceStats> stats;
   final bool estimating;
   final bool hasEstimated;
   final int selectedFiles;
   final int selectedBytes;
   final bool enabled;
+  final ValueChanged<bool> onSectionExpandedChanged;
+  final ValueChanged<String> onToggleNodeExpanded;
   final void Function(MediaSource source, bool value) onToggle;
   final VoidCallback onRefreshEstimate;
 
@@ -22,31 +26,19 @@ class MediaSourcesCard extends StatefulWidget {
     super.key,
     required this.sources,
     required this.enabledSourceIds,
+    required this.sectionExpanded,
+    required this.expandedNodeIds,
     required this.stats,
     required this.estimating,
     required this.hasEstimated,
     required this.selectedFiles,
     required this.selectedBytes,
     required this.enabled,
+    required this.onSectionExpandedChanged,
+    required this.onToggleNodeExpanded,
     required this.onToggle,
     required this.onRefreshEstimate,
   });
-
-  @override
-  State<MediaSourcesCard> createState() => _MediaSourcesCardState();
-}
-
-class _MediaSourcesCardState extends State<MediaSourcesCard> {
-  bool _sectionExpanded = true;
-  final Set<String> _expandedNodes = <String>{};
-
-  void _toggleExpanded(String id) {
-    setState(() {
-      if (!_expandedNodes.remove(id)) {
-        _expandedNodes.add(id);
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +57,7 @@ class _MediaSourcesCardState extends State<MediaSourcesCard> {
               AppTestKeys.mediaSourcesCollapseId,
               child: InkWell(
                 key: AppTestKeys.mediaSourcesCollapse,
-                onTap: () => setState(() => _sectionExpanded = !_sectionExpanded),
+                onTap: () => onSectionExpandedChanged(!sectionExpanded),
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
@@ -73,7 +65,7 @@ class _MediaSourcesCardState extends State<MediaSourcesCard> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _sectionExpanded ? Icons.expand_more : Icons.chevron_right,
+                        sectionExpanded ? Icons.expand_more : Icons.chevron_right,
                         size: 18,
                         color: cs.onSurfaceVariant,
                       ),
@@ -88,7 +80,7 @@ class _MediaSourcesCardState extends State<MediaSourcesCard> {
             Expanded(
               child: Align(
                 alignment: Alignment.centerRight,
-                child: widget.estimating
+                child: estimating
                     ? withTestId(
                         AppTestKeys.mediaSourcesEstimatingId,
                         child: Row(
@@ -116,16 +108,16 @@ class _MediaSourcesCardState extends State<MediaSourcesCard> {
                         ),
                       )
                     : InkWell(
-                        onTap: widget.enabled ? widget.onRefreshEstimate : null,
+                        onTap: enabled ? onRefreshEstimate : null,
                         borderRadius: BorderRadius.circular(8),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                           child: withTestId(
                             AppTestKeys.mediaSourcesSummaryId,
                             child: Text(
-                              widget.hasEstimated
-                                  ? 'Selected: ${widget.selectedFiles} files • '
-                                      '${PathSanitizer.formatBytes(widget.selectedBytes)}'
+                              hasEstimated
+                                  ? 'Selected: $selectedFiles files • '
+                                      '${PathSanitizer.formatBytes(selectedBytes)}'
                                   : 'Tap to estimate',
                               key: AppTestKeys.mediaSourcesSummary,
                               maxLines: 1,
@@ -143,15 +135,15 @@ class _MediaSourcesCardState extends State<MediaSourcesCard> {
             ),
           ],
         ),
-        if (_sectionExpanded) ...[
+        if (sectionExpanded) ...[
           const SizedBox(height: 8),
           Card(
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
-                for (var i = 0; i < widget.sources.length; i++) ...[
+                for (var i = 0; i < sources.length; i++) ...[
                   if (i > 0) const Divider(height: 1),
-                  ..._buildNodeTree(context, widget.sources[i], depth: 0),
+                  ..._buildNodeTree(context, sources[i], depth: 0),
                 ],
               ],
             ),
@@ -162,19 +154,19 @@ class _MediaSourcesCardState extends State<MediaSourcesCard> {
   }
 
   List<Widget> _buildNodeTree(BuildContext context, MediaSource node, {required int depth}) {
-    final expanded = _expandedNodes.contains(node.id);
+    final expanded = expandedNodeIds.contains(node.id);
     final widgets = <Widget>[
       _SourceNodeRow(
         node: node,
         depth: depth,
         expanded: expanded,
-        selectionState: node.selectionState(widget.enabledSourceIds),
-        stat: node.aggregateStats(widget.stats),
-        estimating: widget.estimating,
-        hasEstimated: widget.hasEstimated,
-        enabled: widget.enabled,
-        onToggleExpand: node.isGroup ? () => _toggleExpanded(node.id) : null,
-        onToggleSelection: (val) => widget.onToggle(node, val),
+        selectionState: node.selectionState(enabledSourceIds),
+        stat: node.aggregateStats(stats),
+        estimating: estimating,
+        hasEstimated: hasEstimated,
+        enabled: enabled,
+        onToggleExpand: node.isGroup ? () => onToggleNodeExpanded(node.id) : null,
+        onToggleSelection: (val) => onToggle(node, val),
       ),
     ];
 
@@ -284,7 +276,6 @@ class _SourceNodeRow extends StatelessWidget {
                 value: selectionState,
                 onChanged: enabled
                     ? (_) {
-                        // Tri-state UX: if unchecked or partial -> check all; if all checked -> uncheck all.
                         final nextValue = selectionState != true;
                         onToggleSelection(nextValue);
                       }

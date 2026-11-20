@@ -23,18 +23,29 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final TextEditingController _limitCtrl;
+  final FocusNode _limitFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _limitCtrl = TextEditingController(text: widget.controller.limitValue.toString());
+    widget.controller.addListener(_syncLimitText);
+  }
+
+  void _syncLimitText() {
+    final target = widget.controller.limitValue.toString();
+    if (_limitCtrl.text != target && !_limitFocusNode.hasFocus) {
+      _limitCtrl.text = target;
+    }
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_syncLimitText);
     WidgetsBinding.instance.removeObserver(this);
     _limitCtrl.dispose();
+    _limitFocusNode.dispose();
     super.dispose();
   }
 
@@ -135,12 +146,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   MediaSourcesCard(
                     sources: ctrl.mediaSources,
                     enabledSourceIds: ctrl.settings.enabledSourceIds,
+                    sectionExpanded: ctrl.mediaSourcesExpanded,
+                    expandedNodeIds: ctrl.expandedSourceGroupIds,
                     stats: ctrl.sourceStats,
                     estimating: ctrl.estimatingStats,
                     hasEstimated: ctrl.hasEstimatedStats,
                     selectedFiles: ctrl.selectedFileCount,
                     selectedBytes: ctrl.selectedTotalBytes,
                     enabled: !isRunning,
+                    onSectionExpandedChanged: ctrl.setMediaSourcesExpanded,
+                    onToggleNodeExpanded: ctrl.toggleSourceGroupExpanded,
                     onToggle: ctrl.toggleSourceNode,
                     onRefreshEstimate: ctrl.refreshSourceStats,
                   ),
@@ -148,6 +163,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   BatchLimitSelector(
                     limitType: ctrl.limitType,
                     valueController: _limitCtrl,
+                    focusNode: _limitFocusNode,
                     enabled: !isRunning,
                     onSelectType: (type) {
                       ctrl.setLimitType(type);

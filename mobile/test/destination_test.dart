@@ -5,6 +5,7 @@ import 'package:uback/core/backup/media_exporter.dart';
 import 'package:uback/core/backup/media_source.dart';
 import 'package:uback/core/backup/native_bridge.dart';
 import 'package:uback/core/config/app_config.dart';
+import 'package:uback/core/config/custom_folder_config.dart';
 
 class _CustomDestination implements BackupDestination {
   bool tested = false;
@@ -49,6 +50,7 @@ class _StubBridge implements NativeBackupBridge {
   @override
   Future<List<BackupItem>> discoverMedia({
     required Set<String> enabledSourceIds,
+    List<CustomFolderConfig> customFolders = const [],
     int? perSourceLimit,
   }) async =>
       [
@@ -64,19 +66,25 @@ class _StubBridge implements NativeBackupBridge {
         ),
       ];
   @override
-  Future<String> getAppVersion() async => '1.1.0+2';
+  Future<String> getAppVersion() async => '1.2.0+3';
   @override
   Future<BackupProgress> getBackupStatus() async => const BackupProgress();
   @override
-  Future<String> getDeviceName() async => 'rodrigo';
+  Future<String> getDeviceName() async => 'android';
   @override
-  Future<Map<String, MediaSourceStats>> getSourceStats() async => const {};
+  Future<Map<String, MediaSourceStats>> getSourceStats({
+    List<CustomFolderConfig> customFolders = const [],
+  }) async =>
+      const {};
   @override
   Future<void> openAllFilesAccessSettings() async {}
   @override
   Stream<BackupProgress> progressStream() => const Stream.empty();
   @override
   Future<PermissionState> requestMediaPermissions() => checkPermissions();
+  @override
+  Future<PermissionState> requestSnapshotPermissions(Set<String> snapshotSources) =>
+      checkPermissions();
   @override
   Future<void> startBackup({
     required AppSettings settings,
@@ -92,14 +100,16 @@ class _StubBridge implements NativeBackupBridge {
 }
 
 void main() {
-  test('DestinationRegistry resolves configured destination and delegates backup operations', () async {
+  test('DestinationRegistry resolves configured destination and persists lastExporterId', () async {
     final bridge = _StubBridge();
     final custom = _CustomDestination();
     final registry = DestinationRegistry([SmbNasDestination(bridge), custom]);
 
+    final plain = InMemoryKeyValueStore();
+    final secure = InMemoryKeyValueStore();
     final repo = AppSettingsRepository(
-      plainStore: InMemoryKeyValueStore(),
-      secureStore: InMemoryKeyValueStore(),
+      plainStore: plain,
+      secureStore: secure,
       defaults: const AppSettings(
         destinationType: 'custom_cloud',
         host: '',
@@ -127,5 +137,8 @@ void main() {
 
     await controller.startBackup();
     expect(custom.started, isTrue);
+
+    final reloaded = await repo.load();
+    expect(reloaded.lastExporterId, 'unified_media_exporter');
   });
 }

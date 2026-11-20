@@ -6,6 +6,7 @@ import '../core/config/app_config.dart';
 import '../core/testing/test_keys.dart';
 import '../core/utils/path_sanitizer.dart';
 import 'widgets/connection_banner.dart';
+import 'widgets/custom_folders_section.dart';
 import 'widgets/settings_sources_section.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -295,6 +296,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 12),
                   ConnectionBanner(result: ctrl.connectionResult!),
                 ],
+                const SizedBox(height: 24),
+                CustomFoldersSection(
+                  folders: ctrl.settings.customFolders,
+                  onAdd: (path, name) => ctrl.addCustomFolder(relativePath: path, displayName: name),
+                  onRemove: ctrl.removeCustomFolder,
+                ),
                 const SizedBox(height: 24),
                 SettingsPermissionsSection(
                   hasAllFiles: ctrl.permissions.hasAllFiles,

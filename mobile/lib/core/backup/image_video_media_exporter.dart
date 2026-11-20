@@ -3,7 +3,7 @@ import 'backup_planner.dart';
 import 'media_exporter.dart';
 import 'native_bridge.dart';
 
-/// Phase 1 concrete MediaExporter covering Camera and Screenshots (Images & Videos only).
+/// Unified MediaExporter covering all enabled hierarchical media sources, snapshots, and custom folders.
 /// Never generates thumbnails or previews.
 class ImageVideoMediaExporter implements MediaExporter {
   final NativeBackupBridge _bridge;
@@ -17,6 +17,9 @@ class ImageVideoMediaExporter implements MediaExporter {
   });
 
   @override
+  String get id => 'unified_media_exporter';
+
+  @override
   String get mediaTypeName => 'Selected Media Sources';
 
   @override
@@ -24,6 +27,7 @@ class ImageVideoMediaExporter implements MediaExporter {
     final settings = _settingsProvider();
     final discovered = await _bridge.discoverMedia(
       enabledSourceIds: settings.enabledSourceIds,
+      customFolders: settings.customFolders,
       perSourceLimit: limit?.maxFiles,
     );
     return BackupPlanner.plan(discovered, limit: limit);
