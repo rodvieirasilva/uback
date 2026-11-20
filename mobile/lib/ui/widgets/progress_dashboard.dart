@@ -76,6 +76,43 @@ class ProgressDashboard extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
             ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: withTestId(
+                    AppTestKeys.statElapsedId,
+                    child: Text(
+                      'Elapsed: ${PathSanitizer.formatDuration(progress.elapsedMs)}',
+                      key: AppTestKeys.statElapsed,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: withTestId(
+                    AppTestKeys.statEtaId,
+                    child: Text(
+                      _etaLabel(progress),
+                      key: AppTestKeys.statEta,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -162,11 +199,22 @@ class ProgressDashboard extends StatelessWidget {
     );
   }
 
+  static String _etaLabel(BackupProgress progress) {
+    return switch (progress.state) {
+      BackupRunState.paused => 'ETA: Paused',
+      BackupRunState.completed => 'ETA: Done',
+      BackupRunState.running when progress.etaMs != null =>
+        'ETA: ~${PathSanitizer.formatDuration(progress.etaMs!)}',
+      _ => 'ETA: --',
+    };
+  }
+
   static String _stateLabel(BackupRunState state) {
     return switch (state) {
       BackupRunState.idle => 'Ready',
       BackupRunState.scanning => 'Scanning Media...',
       BackupRunState.running => 'Backing Up...',
+      BackupRunState.paused => 'Paused',
       BackupRunState.completed => 'Completed',
       BackupRunState.cancelled => 'Cancelled',
       BackupRunState.error => 'Finished with Errors',

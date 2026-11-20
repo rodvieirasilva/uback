@@ -28,6 +28,12 @@ abstract class BackupDestination {
     required List<BackupItem> items,
   });
 
+  /// Pauses an in-flight transfer cleanly without cancelling.
+  Future<void> pauseBackup();
+
+  /// Resumes a paused transfer.
+  Future<void> resumeBackup();
+
   /// Safely requests cancellation of an in-flight transfer.
   Future<void> stopBackup();
 }
@@ -70,6 +76,12 @@ class SmbNasDestination implements BackupDestination {
         deviceFolder: deviceFolder,
         items: items,
       );
+
+  @override
+  Future<void> pauseBackup() => _bridge.pauseBackup();
+
+  @override
+  Future<void> resumeBackup() => _bridge.resumeBackup();
 
   @override
   Future<void> stopBackup() => _bridge.stopBackup();

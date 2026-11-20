@@ -149,6 +149,7 @@ seed_emulator_media() {
 
   adb -s "$EMU_SERIAL" push "$SEED_DIR/PTT-20220501-WA0001.opus" "$WA_MEDIA/WhatsApp Voice Notes/202218/PTT-20220501-WA0001.opus" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/IMG_20230110_090000.jpg" "/sdcard/DCIM/Camera/IMG_20230110_090000.jpg" >/dev/null
+  adb -s "$EMU_SERIAL" push "$SEED_DIR/IMG_20230110_090000_DUP.jpg" "/sdcard/DCIM/Camera/IMG_20230110_090000_DUP.jpg" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/invoice_2023.pdf" "$WA_MEDIA/WhatsApp Documents/invoice_2023.pdf" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/REC_20230412_100000.m4a" "/sdcard/Recordings/Voice Recorder/REC_20230412_100000.m4a" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/Screenshot_20230705_110000.png" "/sdcard/Pictures/Screenshots/Screenshot_20230705_110000.png" >/dev/null
@@ -162,6 +163,7 @@ seed_emulator_media() {
 
   adb -s "$EMU_SERIAL" shell "touch -t 202205010800.00 '$WA_MEDIA/WhatsApp Voice Notes/202218/PTT-20220501-WA0001.opus'"
   adb -s "$EMU_SERIAL" shell "touch -t 202301100900.00 /sdcard/DCIM/Camera/IMG_20230110_090000.jpg"
+  adb -s "$EMU_SERIAL" shell "touch -t 202301110900.00 /sdcard/DCIM/Camera/IMG_20230110_090000_DUP.jpg"
   adb -s "$EMU_SERIAL" shell "touch -t 202302140930.00 '$WA_MEDIA/WhatsApp Documents/invoice_2023.pdf'"
   adb -s "$EMU_SERIAL" shell "touch -t 202304121000.00 '/sdcard/Recordings/Voice Recorder/REC_20230412_100000.m4a'"
   adb -s "$EMU_SERIAL" shell "touch -t 202307051100.00 /sdcard/Pictures/Screenshots/Screenshot_20230705_110000.png"
@@ -220,6 +222,7 @@ verify_emulator_cleanup() {
   for f in \
     "$WA_MEDIA/WhatsApp Voice Notes/202218/PTT-20220501-WA0001.opus" \
     "/sdcard/DCIM/Camera/IMG_20230110_090000.jpg" \
+    "/sdcard/DCIM/Camera/IMG_20230110_090000_DUP.jpg" \
     "$WA_MEDIA/WhatsApp Documents/invoice_2023.pdf" \
     "/sdcard/Recordings/Voice Recorder/REC_20230412_100000.m4a" \
     "/sdcard/Pictures/Screenshots/Screenshot_20230705_110000.png" \

@@ -21,13 +21,15 @@ void main() {
         case 'getDeviceName':
           return 'Galaxy S23 FE';
         case 'getAppVersion':
-          return '1.2.2';
+          return '1.2.3';
         case 'checkPermissions':
         case 'requestMediaPermissions':
         case 'requestSnapshotPermissions':
           return {'hasMedia': true, 'hasAllFiles': true, 'hasNotifications': false};
         case 'openAllFilesAccessSettings':
         case 'startBackup':
+        case 'pauseBackup':
+        case 'resumeBackup':
         case 'stopBackup':
           return null;
         case 'pickFolder':
@@ -77,6 +79,8 @@ void main() {
             'currentFile': 'IMG_005.jpg',
             'bytesTransferred': 4096,
             'totalBytes': 10240,
+            'elapsedMs': 84000,
+            'etaMs': 126000,
             'errorMessage': null,
             'errors': [
               {'fileName': 'BAD.jpg', 'message': 'SHA-256 mismatch'},
@@ -107,7 +111,7 @@ void main() {
     );
 
     expect(await bridge.getDeviceName(), 'Galaxy S23 FE');
-    expect(await bridge.getAppVersion(), '1.2.2');
+    expect(await bridge.getAppVersion(), '1.2.3');
 
     final perms = await bridge.checkPermissions();
     expect(perms.hasMedia, isTrue);
@@ -145,6 +149,8 @@ void main() {
       deviceFolder: 'galaxy-s23-fe',
       items: items,
     );
+    await bridge.pauseBackup();
+    await bridge.resumeBackup();
     await bridge.stopBackup();
 
     final status = await bridge.getBackupStatus();
@@ -152,6 +158,8 @@ void main() {
     expect(status.isActive, isTrue);
     expect(status.transferred + status.skipped + status.failed, 6);
     expect(status.fraction, closeTo(0.4, 0.001));
+    expect(status.elapsedMs, 84000);
+    expect(status.etaMs, 126000);
     expect(status.errors.length, 1);
     expect(status.errors.first.fileName, 'BAD.jpg');
 
@@ -169,6 +177,8 @@ void main() {
         'getSourceStats',
         'testConnection',
         'startBackup',
+        'pauseBackup',
+        'resumeBackup',
         'stopBackup',
         'getBackupStatus',
       ]),
@@ -180,6 +190,7 @@ void main() {
       ('idle', BackupRunState.idle),
       ('scanning', BackupRunState.scanning),
       ('running', BackupRunState.running),
+      ('paused', BackupRunState.paused),
       ('completed', BackupRunState.completed),
       ('cancelled', BackupRunState.cancelled),
       ('error', BackupRunState.error),

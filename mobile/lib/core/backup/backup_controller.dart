@@ -450,6 +450,14 @@ class BackupController extends ChangeNotifier {
     }
   }
 
+  Future<void> pauseBackup() async {
+    await activeDestination.pauseBackup();
+  }
+
+  Future<void> resumeBackup() async {
+    await activeDestination.resumeBackup();
+  }
+
   Future<void> stopBackup() async {
     await activeDestination.stopBackup();
   }

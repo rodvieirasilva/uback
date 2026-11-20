@@ -82,7 +82,7 @@ class BackupErrorEntry {
       );
 }
 
-enum BackupRunState { idle, scanning, running, completed, cancelled, error }
+enum BackupRunState { idle, scanning, running, paused, completed, cancelled, error }
 
 class BackupProgress {
   final BackupRunState state;
@@ -94,6 +94,8 @@ class BackupProgress {
   final int remaining;
   final int bytesTransferred;
   final int totalBytes;
+  final int elapsedMs;
+  final int? etaMs;
   final String currentFile;
   final List<BackupErrorEntry> errors;
 
@@ -107,11 +109,18 @@ class BackupProgress {
     this.remaining = 0,
     this.bytesTransferred = 0,
     this.totalBytes = 0,
+    this.elapsedMs = 0,
+    this.etaMs,
     this.currentFile = '',
     this.errors = const [],
   });
 
-  bool get isActive => state == BackupRunState.scanning || state == BackupRunState.running;
+  bool get isPaused => state == BackupRunState.paused;
+
+  bool get isActive =>
+      state == BackupRunState.scanning ||
+      state == BackupRunState.running ||
+      state == BackupRunState.paused;
 
   double get fraction {
     if (totalBytes > 0) {
@@ -128,6 +137,7 @@ class BackupProgress {
     final runState = switch (stateStr) {
       'scanning' => BackupRunState.scanning,
       'running' => BackupRunState.running,
+      'paused' => BackupRunState.paused,
       'completed' => BackupRunState.completed,
       'cancelled' => BackupRunState.cancelled,
       'error' => BackupRunState.error,
@@ -140,6 +150,7 @@ class BackupProgress {
         .map(BackupErrorEntry.fromMap)
         .toList();
 
+    final rawEta = (map['etaMs'] as num?)?.toInt();
     return BackupProgress(
       state: runState,
       stage: (map['stage'] as String?) ?? 'idle',
@@ -150,6 +161,8 @@ class BackupProgress {
       remaining: (map['remaining'] as num?)?.toInt() ?? 0,
       bytesTransferred: (map['bytesTransferred'] as num?)?.toInt() ?? 0,
       totalBytes: (map['totalBytes'] as num?)?.toInt() ?? 0,
+      elapsedMs: (map['elapsedMs'] as num?)?.toInt() ?? 0,
+      etaMs: rawEta != null && rawEta >= 0 ? rawEta : null,
       currentFile: (map['currentFile'] as String?) ?? '',
       errors: errors,
     );

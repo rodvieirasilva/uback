@@ -78,10 +78,14 @@ def main() -> int:
     seed_dir.mkdir(parents=True, exist_ok=True)
 
     video_kb = 4096 if big_mode else 256
+    cam_img_bytes = make_minimal_jpeg(b"oldest-cam-img-2", 12)
     files = {
-        # Global oldest -> newest across ALL enabled sources (11 files once DJI custom folder added):
+        # Global oldest -> newest across ALL enabled sources (12 files + 3 snapshots once DJI custom folder added):
         "PTT-20220501-WA0001.opus": make_minimal_opus(b"oldest-wa-voice-1", 10),
-        "IMG_20230110_090000.jpg": make_minimal_jpeg(b"oldest-cam-img-2", 12),
+        "IMG_20230110_090000.jpg": cam_img_bytes,
+        # Exact same content/SHA-256 as IMG_20230110_090000.jpg under a different filename:
+        # MUST be skipped (0 bytes copied, NOT uploaded as a duplicate on SMB)!
+        "IMG_20230110_090000_DUP.jpg": cam_img_bytes,
         "invoice_2023.pdf": make_minimal_pdf(b"oldest-wa-doc-3", 10),
         "REC_20230412_100000.m4a": make_minimal_m4a(b"oldest-recording-4", 14),
         "Screenshot_20230705_110000.png": make_minimal_png(b"oldest-ss-5", 16),

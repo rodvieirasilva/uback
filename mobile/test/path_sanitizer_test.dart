@@ -84,4 +84,13 @@ void main() {
       expect(PathSanitizer.formatBytes(5 * 1024 * 1024), '5.0 MB');
     });
   });
+
+  group('PathSanitizer.formatDuration', () {
+    test('formats elapsed and ETA durations as MM:SS and H:MM:SS', () {
+      expect(PathSanitizer.formatDuration(0), '00:00');
+      expect(PathSanitizer.formatDuration(42000), '00:42');
+      expect(PathSanitizer.formatDuration(318000), '05:18');
+      expect(PathSanitizer.formatDuration(3918000), '1:05:18');
+    });
+  });
 }

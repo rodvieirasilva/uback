@@ -208,9 +208,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
         const SizedBox(height: 18),
         _PrimaryActionButton(
-          isRunning: isRunning,
+          runState: ctrl.progress.state,
           mode: ctrl.mode,
           onStart: ctrl.startBackup,
+          onPause: ctrl.pauseBackup,
+          onResume: ctrl.resumeBackup,
           onStop: ctrl.stopBackup,
         ),
         if (ctrl.statusMessage != null) ...[
@@ -243,39 +245,87 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 }
 
 class _PrimaryActionButton extends StatelessWidget {
-  final bool isRunning;
+  final BackupRunState runState;
   final BackupMode mode;
   final VoidCallback onStart;
+  final VoidCallback onPause;
+  final VoidCallback onResume;
   final VoidCallback onStop;
 
   const _PrimaryActionButton({
-    required this.isRunning,
+    required this.runState,
     required this.mode,
     required this.onStart,
+    required this.onPause,
+    required this.onResume,
     required this.onStop,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (isRunning) {
-      return withTestId(
-        AppTestKeys.stopBackupId,
-        child: FilledButton.icon(
-          key: AppTestKeys.stopBackup,
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(54),
-            backgroundColor: Colors.redAccent,
-            foregroundColor: Colors.white,
+    final isPaused = runState == BackupRunState.paused;
+    final isActive =
+        runState == BackupRunState.scanning || runState == BackupRunState.running || isPaused;
+
+    if (isActive) {
+      return Row(
+        children: [
+          Expanded(
+            child: isPaused
+                ? withTestId(
+                    AppTestKeys.resumeBackupId,
+                    child: FilledButton.icon(
+                      key: AppTestKeys.resumeBackup,
+                      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+                      onPressed: onResume,
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: const Text(
+                        'Resume',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  )
+                : withTestId(
+                    AppTestKeys.pauseBackupId,
+                    child: FilledButton.tonalIcon(
+                      key: AppTestKeys.pauseBackup,
+                      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+                      onPressed: runState == BackupRunState.running ? onPause : null,
+                      icon: const Icon(Icons.pause_rounded),
+                      label: const Text(
+                        'Pause',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
           ),
-          onPressed: onStop,
-          icon: const Icon(Icons.stop_circle_outlined),
-          label: const Text(
-            'Stop Backup Safely',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          const SizedBox(width: 10),
+          Expanded(
+            child: withTestId(
+              AppTestKeys.stopBackupId,
+              child: FilledButton.icon(
+                key: AppTestKeys.stopBackup,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(54),
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: onStop,
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: const Text(
+                  'Stop',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       );
     }
 

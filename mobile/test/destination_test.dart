@@ -40,6 +40,12 @@ class _CustomDestination implements BackupDestination {
   }
 
   @override
+  Future<void> pauseBackup() async {}
+
+  @override
+  Future<void> resumeBackup() async {}
+
+  @override
   Future<void> stopBackup() async {}
 }
 
@@ -66,7 +72,7 @@ class _StubBridge implements NativeBackupBridge {
         ),
       ];
   @override
-  Future<String> getAppVersion() async => '1.2.2';
+  Future<String> getAppVersion() async => '1.2.3';
   @override
   Future<BackupProgress> getBackupStatus() async => const BackupProgress();
   @override
@@ -94,6 +100,10 @@ class _StubBridge implements NativeBackupBridge {
     required String deviceFolder,
     required List<BackupItem> items,
   }) async {}
+  @override
+  Future<void> pauseBackup() async {}
+  @override
+  Future<void> resumeBackup() async {}
   @override
   Future<void> stopBackup() async {}
   @override

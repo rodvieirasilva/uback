@@ -15,7 +15,7 @@ class _AdaptiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Galaxy Z Fold';
   @override
-  Future<String> getAppVersion() async => '1.2.2';
+  Future<String> getAppVersion() async => '1.2.3';
   @override
   Future<PermissionState> checkPermissions() async =>
       const PermissionState(hasMedia: true, hasAllFiles: true, hasNotifications: true);
@@ -53,6 +53,10 @@ class _AdaptiveFakeBridge implements NativeBackupBridge {
     required String deviceFolder,
     required List<BackupItem> items,
   }) async {}
+  @override
+  Future<void> pauseBackup() async {}
+  @override
+  Future<void> resumeBackup() async {}
   @override
   Future<void> stopBackup() async {}
   @override

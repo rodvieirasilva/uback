@@ -17,6 +17,8 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   ConnectionTestResult nextConnResult;
   FolderPickResult? nextFolderPickResult;
   bool openedAllFiles = false;
+  bool pausedBackup = false;
+  bool resumedBackup = false;
   bool stoppedBackup = false;
   List<BackupItem> discoveredItems;
 
@@ -31,7 +33,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Test Phone';
   @override
-  Future<String> getAppVersion() async => '1.2.2';
+  Future<String> getAppVersion() async => '1.2.3';
   @override
   Future<PermissionState> checkPermissions() async => permissions;
   @override
@@ -88,6 +90,34 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
         remaining: items.length,
         currentFile: items.first.fileName,
         totalBytes: items.fold(0, (s, i) => s + i.sizeBytes),
+        elapsedMs: 84000,
+        etaMs: 126000,
+      ),
+    );
+  }
+
+  @override
+  Future<void> pauseBackup() async {
+    pausedBackup = true;
+    _progressCtrl.add(
+      const BackupProgress(
+        state: BackupRunState.paused,
+        stage: 'paused',
+        total: 1,
+        remaining: 1,
+      ),
+    );
+  }
+
+  @override
+  Future<void> resumeBackup() async {
+    resumedBackup = true;
+    _progressCtrl.add(
+      const BackupProgress(
+        state: BackupRunState.running,
+        stage: 'resuming',
+        total: 1,
+        remaining: 1,
       ),
     );
   }
@@ -168,11 +198,28 @@ void main() {
     await tester.pumpWidget(UBackApp(controller: controller));
     await tester.pumpAndSettle();
 
-    // Start backup -> enters running state -> tap Stop
+    // Start backup -> enters running state (with Elapsed + ETA) -> Pause -> Resume -> Stop
     await tester.ensureVisible(find.byKey(AppTestKeys.startBackup));
     await tester.tap(find.byKey(AppTestKeys.startBackup));
     await tester.pumpAndSettle();
+    expect(find.byKey(AppTestKeys.pauseBackup), findsOneWidget);
     expect(find.byKey(AppTestKeys.stopBackup), findsOneWidget);
+    expect(find.text('Elapsed: 01:24'), findsOneWidget);
+    expect(find.text('ETA: ~02:06'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(AppTestKeys.pauseBackup));
+    await tester.tap(find.byKey(AppTestKeys.pauseBackup));
+    await tester.pumpAndSettle();
+    expect(bridge.pausedBackup, isTrue);
+    expect(find.text('Paused'), findsOneWidget);
+    expect(find.text('ETA: Paused'), findsOneWidget);
+    expect(find.byKey(AppTestKeys.resumeBackup), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(AppTestKeys.resumeBackup));
+    await tester.tap(find.byKey(AppTestKeys.resumeBackup));
+    await tester.pumpAndSettle();
+    expect(bridge.resumedBackup, isTrue);
+    expect(find.byKey(AppTestKeys.pauseBackup), findsOneWidget);
 
     await tester.ensureVisible(find.byKey(AppTestKeys.stopBackup));
     await tester.tap(find.byKey(AppTestKeys.stopBackup));

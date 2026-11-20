@@ -34,7 +34,7 @@ See [docs/RELEASE.md](docs/RELEASE.md) for the release process and [AGENTS.md](A
   - **Copy**: Transfers and verifies files on the destination, leaving local files untouched.
   - **Crop (Free Space)**: Verifies every file via full SHA-256 read-back before deleting the local file and refreshing Android MediaStore (Device Snapshots never delete real Contacts, SMS, or Call Logs).
 - **Global Oldest-First & Batch Limits**: Always orders oldest-first across **all** enabled sources combined; optionally limit a run to `All`, `Oldest X files`, or `Oldest X MB`.
-- **High-Volume UX**: Zero media thumbnails or previews — lightweight progress counters (`Transferred`, `Remaining`, `Total`, `Skipped`, `Failed`) with a pinned Android Foreground Service progress notification.
+- **High-Volume UX with Pause / Resume, Live ETA & Content-Hash Deduplication**: Zero media thumbnails or previews — lightweight progress counters (`Transferred`, `Remaining`, `Total`, `Skipped`, `Failed`, `Elapsed`, `ETA`), live **Pause / Resume** controls in both the app and Android Foreground Notification, and automatic **SHA-256 deduplication** that skips copying any file whose hash already matches in the destination folder (even under a different filename).
 - **Adaptive System Theme & Foldable / Landscape Support**: Material 3 Light and Dark themes follow your system theme, with an automatic two-pane hinge-aware layout for landscape phones, tablets, and foldable dual-screen devices (`DisplayFeature` hinge/fold avoidance).
 - **Compile-Time Defaults + In-App Settings**: Local gitignored `config.toml` injects default destination settings at build time, while Settings lets you edit or override them at runtime (credentials stored with Android secure storage).
 

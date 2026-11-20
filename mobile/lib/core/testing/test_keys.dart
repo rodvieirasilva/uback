@@ -11,6 +11,8 @@ abstract final class AppTestKeys {
   static const String limitMbId = 'limit_mb_btn';
   static const String limitValueInputId = 'limit_value_input';
   static const String startBackupId = 'start_backup_btn';
+  static const String pauseBackupId = 'pause_backup_btn';
+  static const String resumeBackupId = 'resume_backup_btn';
   static const String stopBackupId = 'stop_backup_btn';
   static const String openSettingsId = 'open_settings_btn';
   static const String testConnectionId = 'test_connection_btn';
@@ -27,6 +29,8 @@ abstract final class AppTestKeys {
   static const String statSkippedId = 'stat_skipped';
   static const String statFailedId = 'stat_failed';
   static const String statBytesId = 'stat_bytes';
+  static const String statElapsedId = 'stat_elapsed';
+  static const String statEtaId = 'stat_eta';
   static const String statusStateId = 'status_state';
   static const String statusStageId = 'status_stage';
   static const String statusCurrentFileId = 'status_current_file';
@@ -74,6 +78,8 @@ abstract final class AppTestKeys {
   static const ValueKey<String> limitMb = ValueKey(limitMbId);
   static const ValueKey<String> limitValueInput = ValueKey(limitValueInputId);
   static const ValueKey<String> startBackup = ValueKey(startBackupId);
+  static const ValueKey<String> pauseBackup = ValueKey(pauseBackupId);
+  static const ValueKey<String> resumeBackup = ValueKey(resumeBackupId);
   static const ValueKey<String> stopBackup = ValueKey(stopBackupId);
   static const ValueKey<String> openSettings = ValueKey(openSettingsId);
   static const ValueKey<String> testConnection = ValueKey(testConnectionId);
@@ -89,6 +95,8 @@ abstract final class AppTestKeys {
   static const ValueKey<String> statSkipped = ValueKey(statSkippedId);
   static const ValueKey<String> statFailed = ValueKey(statFailedId);
   static const ValueKey<String> statBytes = ValueKey(statBytesId);
+  static const ValueKey<String> statElapsed = ValueKey(statElapsedId);
+  static const ValueKey<String> statEta = ValueKey(statEtaId);
   static const ValueKey<String> statusState = ValueKey(statusStateId);
   static const ValueKey<String> statusStage = ValueKey(statusStageId);
   static const ValueKey<String> statusCurrentFile = ValueKey(statusCurrentFileId);
