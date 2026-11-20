@@ -28,7 +28,7 @@ See [docs/RELEASE.md](docs/RELEASE.md) for the release process and [AGENTS.md](A
   - **Device Snapshots** (`Contacts (.vcf)`, `SMS Messages (.json)`, `Call Logs (.json)` — opt-in, strictly read-only even in Crop Mode)
   - **Custom Folders** (browse device folders with Android's native folder picker or type any `/sdcard/...` path in Settings, e.g., `DJI/Media`, `GoPro`, `Obsidian`)
 - **Full Session Persistence**: Automatically remembers your last configuration, exporter, backup mode (`Copy`/`Crop`), batch limit (`All`/`Oldest X files`/`Oldest X MB`), exact source toggles, custom folders, and expand/collapse state across restarts.
-- **Extensible Destinations**: Built on an abstract `BackupDestination` interface (`SMB NAS` active now, configurable for additional destinations in `config.toml` and Settings).
+- **High-Speed SMB2/SMB3 Pipelined Engine**: Dynamically selects optimal I/O and SMB2 `LargeMTU` buffer sizes (`64 KB` for small files, `256 KB` for photos/docs, `1 MB` for medium videos, and `4 MB` for huge WhatsApp `.crypt15` databases and 4K videos), pipelines multi-credit SMB2 `WRITE` requests concurrently, and computes local SHA-256 **in a single pass while uploading** for new files (eliminating the separate pre-upload hashing pass).
 - **Destination Layout**: `smb://{host}:{port}/{share}/{base_path}/{device_name}/{source}/{YYYY}/{MM}/{filename}` (e.g., `.../camera/2025/04/`, `.../whatsapp/sent/videos/2025/04/`, `.../custom/dji-media/2025/04/`).
 - **Modes**:
   - **Copy**: Transfers and verifies files on the destination, leaving local files untouched.

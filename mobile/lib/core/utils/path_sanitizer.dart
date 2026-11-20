@@ -92,6 +92,23 @@ abstract final class PathSanitizer {
     return '${value.toStringAsFixed(value >= 100 ? 0 : 1)} ${units[idx]}';
   }
 
+  static const int minTransferBufferBytes = 64 * 1024;
+  static const int mediumTransferBufferBytes = 256 * 1024;
+  static const int largeTransferBufferBytes = 1024 * 1024;
+  static const int hugeTransferBufferBytes = 4 * 1024 * 1024;
+
+  /// Dynamically selects the optimal SMB2 / I/O buffer size based on [fileSizeBytes]:
+  /// - `< 256 KB` -> 64 KB
+  /// - `256 KB .. < 8 MB` -> 256 KB
+  /// - `8 MB .. < 64 MB` -> 1 MB
+  /// - `>= 64 MB` (e.g. huge WhatsApp `.crypt15` databases and 4K videos) -> 4 MB
+  static int selectDynamicBufferSize(int fileSizeBytes) {
+    if (fileSizeBytes >= 64 * 1024 * 1024) return hugeTransferBufferBytes;
+    if (fileSizeBytes >= 8 * 1024 * 1024) return largeTransferBufferBytes;
+    if (fileSizeBytes >= 256 * 1024) return mediumTransferBufferBytes;
+    return minTransferBufferBytes;
+  }
+
   /// Formats durations cleanly as `MM:SS` or `H:MM:SS` for elapsed time and ETA.
   static String formatDuration(int milliseconds) {
     final totalSeconds = milliseconds <= 0 ? 0 : milliseconds ~/ 1000;
