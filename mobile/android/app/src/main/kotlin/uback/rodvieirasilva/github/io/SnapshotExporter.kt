@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.Telephony
+import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -21,6 +22,7 @@ import java.time.format.DateTimeFormatter
  */
 object SnapshotExporter {
 
+    private const val TAG = "UBack"
     private val dateFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
 
     fun estimateStats(context: Context): Map<String, Map<String, Any>> {
@@ -42,14 +44,17 @@ object SnapshotExporter {
 
         if ("snapshots.contacts" in enabledSources && hasPerm(context, Manifest.permission.READ_CONTACTS)) {
             runCatching { exportContactsVcf(context, cacheDir, stamp, nowMs) }
+                .onFailure { Log.w(TAG, "Contacts snapshot export failed: ${it.message}") }
                 .getOrNull()?.let { out.add(it) }
         }
         if ("snapshots.sms" in enabledSources && hasPerm(context, Manifest.permission.READ_SMS)) {
             runCatching { exportSmsJson(context, cacheDir, stamp, nowMs) }
+                .onFailure { Log.w(TAG, "SMS snapshot export failed: ${it.message}") }
                 .getOrNull()?.let { out.add(it) }
         }
         if ("snapshots.call_logs" in enabledSources && hasPerm(context, Manifest.permission.READ_CALL_LOG)) {
             runCatching { exportCallLogsJson(context, cacheDir, stamp, nowMs) }
+                .onFailure { Log.w(TAG, "Call Logs snapshot export failed: ${it.message}") }
                 .getOrNull()?.let { out.add(it) }
         }
         return out
@@ -57,29 +62,38 @@ object SnapshotExporter {
 
     private fun estimateContacts(context: Context): Map<String, Any> {
         if (!hasPerm(context, Manifest.permission.READ_CONTACTS)) {
-            return mapOf("count" to 0, "totalBytes" to 0L)
+            return mapOf("count" to 0, "totalBytes" to 0L, "permissionRequired" to true)
         }
         val rows = queryRowCount(context, ContactsContract.Contacts.CONTENT_URI)
-        return if (rows > 0) mapOf("count" to 1, "totalBytes" to rows * 256L)
-        else mapOf("count" to 0, "totalBytes" to 0L)
+        return if (rows > 0) {
+            mapOf("count" to 1, "totalBytes" to rows * 256L, "permissionRequired" to false)
+        } else {
+            mapOf("count" to 0, "totalBytes" to 0L, "permissionRequired" to false)
+        }
     }
 
     private fun estimateSms(context: Context): Map<String, Any> {
         if (!hasPerm(context, Manifest.permission.READ_SMS)) {
-            return mapOf("count" to 0, "totalBytes" to 0L)
+            return mapOf("count" to 0, "totalBytes" to 0L, "permissionRequired" to true)
         }
         val rows = queryRowCount(context, Telephony.Sms.CONTENT_URI)
-        return if (rows > 0) mapOf("count" to 1, "totalBytes" to rows * 220L)
-        else mapOf("count" to 0, "totalBytes" to 0L)
+        return if (rows > 0) {
+            mapOf("count" to 1, "totalBytes" to rows * 220L, "permissionRequired" to false)
+        } else {
+            mapOf("count" to 0, "totalBytes" to 0L, "permissionRequired" to false)
+        }
     }
 
     private fun estimateCallLogs(context: Context): Map<String, Any> {
         if (!hasPerm(context, Manifest.permission.READ_CALL_LOG)) {
-            return mapOf("count" to 0, "totalBytes" to 0L)
+            return mapOf("count" to 0, "totalBytes" to 0L, "permissionRequired" to true)
         }
         val rows = queryRowCount(context, CallLog.Calls.CONTENT_URI)
-        return if (rows > 0) mapOf("count" to 1, "totalBytes" to rows * 160L)
-        else mapOf("count" to 0, "totalBytes" to 0L)
+        return if (rows > 0) {
+            mapOf("count" to 1, "totalBytes" to rows * 160L, "permissionRequired" to false)
+        } else {
+            mapOf("count" to 0, "totalBytes" to 0L, "permissionRequired" to false)
+        }
     }
 
     private fun queryRowCount(context: Context, uri: Uri): Int {
@@ -88,42 +102,73 @@ object SnapshotExporter {
         }.getOrDefault(0)
     }
 
+    private data class ContactRow(
+        val id: String,
+        val lookupKey: String?,
+        val displayName: String,
+    )
+
     private fun exportContactsVcf(
         context: Context,
         cacheDir: File,
         stamp: String,
         nowMs: Long,
     ): DiscoveredMediaItem? {
-        val lookupKeys = mutableListOf<String>()
+        val contacts = mutableListOf<ContactRow>()
         context.contentResolver.query(
             ContactsContract.Contacts.CONTENT_URI,
-            arrayOf(ContactsContract.Contacts.LOOKUP_KEY),
+            arrayOf(
+                ContactsContract.Contacts._ID,
+                ContactsContract.Contacts.LOOKUP_KEY,
+                ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,
+            ),
             null,
             null,
             null,
         )?.use { cursor ->
-            val idx = cursor.getColumnIndex(ContactsContract.Contacts.LOOKUP_KEY)
+            val idIdx = cursor.getColumnIndex(ContactsContract.Contacts._ID)
+            val keyIdx = cursor.getColumnIndex(ContactsContract.Contacts.LOOKUP_KEY)
+            val nameIdx = cursor.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY)
             while (cursor.moveToNext()) {
-                val key = if (idx >= 0) cursor.getString(idx) else null
-                if (!key.isNullOrBlank()) lookupKeys.add(key)
+                val id = if (idIdx >= 0) cursor.getString(idIdx) else null
+                if (id.isNullOrBlank()) continue
+                val key = if (keyIdx >= 0) cursor.getString(keyIdx) else null
+                val name = (if (nameIdx >= 0) cursor.getString(nameIdx) else null).orEmpty()
+                contacts.add(ContactRow(id = id, lookupKey = key, displayName = name))
             }
         }
-        if (lookupKeys.isEmpty()) return null
+        if (contacts.isEmpty()) return null
 
         val outFile = File(cacheDir, "contacts_$stamp.vcf")
         outFile.outputStream().buffered().use { out ->
-            for (key in lookupKeys) {
-                val vcardUri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_VCARD_URI, key)
-                runCatching {
-                    context.contentResolver.openInputStream(vcardUri)?.use { input ->
-                        input.copyTo(out)
-                        out.write('\n'.code)
+            for (contact in contacts) {
+                var wroteFromProvider = false
+                if (!contact.lookupKey.isNullOrBlank()) {
+                    val vcardUri = Uri.withAppendedPath(
+                        ContactsContract.Contacts.CONTENT_VCARD_URI,
+                        Uri.encode(contact.lookupKey),
+                    )
+                    runCatching {
+                        context.contentResolver.openInputStream(vcardUri)?.use { input ->
+                            val copied = input.copyTo(out)
+                            if (copied > 0L) {
+                                out.write('\n'.code)
+                                wroteFromProvider = true
+                            }
+                        }
+                    }
+                }
+                if (!wroteFromProvider) {
+                    val fallback = buildFallbackVcard(context, contact)
+                    if (fallback.isNotEmpty()) {
+                        out.write(fallback.toByteArray(Charsets.UTF_8))
                     }
                 }
             }
             out.flush()
         }
         if (outFile.length() <= 0L) return null
+        Log.i(TAG, "Exported Contacts snapshot: ${outFile.name} (${outFile.length()} bytes, ${contacts.size} contacts)")
         return DiscoveredMediaItem(
             id = "snapshot_contacts_$stamp",
             contentUri = null,
@@ -137,6 +182,58 @@ object SnapshotExporter {
             isSnapshot = true,
         )
     }
+
+    private fun buildFallbackVcard(context: Context, contact: ContactRow): String {
+        val phones = mutableListOf<String>()
+        runCatching {
+            context.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
+                "${ContactsContract.CommonDataKinds.Phone.CONTACT_ID} = ?",
+                arrayOf(contact.id),
+                null,
+            )?.use { c ->
+                val idx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                while (c.moveToNext()) {
+                    val num = if (idx >= 0) c.getString(idx)?.trim() else null
+                    if (!num.isNullOrEmpty()) phones.add(num)
+                }
+            }
+        }
+        val emails = mutableListOf<String>()
+        runCatching {
+            context.contentResolver.query(
+                ContactsContract.CommonDataKinds.Email.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Email.ADDRESS),
+                "${ContactsContract.CommonDataKinds.Email.CONTACT_ID} = ?",
+                arrayOf(contact.id),
+                null,
+            )?.use { c ->
+                val idx = c.getColumnIndex(ContactsContract.CommonDataKinds.Email.ADDRESS)
+                while (c.moveToNext()) {
+                    val mail = if (idx >= 0) c.getString(idx)?.trim() else null
+                    if (!mail.isNullOrEmpty()) emails.add(mail)
+                }
+            }
+        }
+
+        val fn = contact.displayName.ifBlank { phones.firstOrNull() ?: emails.firstOrNull() ?: "Contact ${contact.id}" }
+        val sb = StringBuilder()
+        sb.append("BEGIN:VCARD\r\n")
+        sb.append("VERSION:3.0\r\n")
+        sb.append("FN:").append(escapeVcard(fn)).append("\r\n")
+        for (p in phones) {
+            sb.append("TEL:").append(escapeVcard(p)).append("\r\n")
+        }
+        for (e in emails) {
+            sb.append("EMAIL:").append(escapeVcard(e)).append("\r\n")
+        }
+        sb.append("END:VCARD\r\n")
+        return sb.toString()
+    }
+
+    private fun escapeVcard(raw: String): String =
+        raw.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "")
 
     private fun exportSmsJson(
         context: Context,
@@ -174,6 +271,7 @@ object SnapshotExporter {
 
         val outFile = File(cacheDir, "sms_$stamp.json")
         outFile.writeText(array.toString(2))
+        Log.i(TAG, "Exported SMS snapshot: ${outFile.name} (${outFile.length()} bytes, ${array.length()} messages)")
         return DiscoveredMediaItem(
             id = "snapshot_sms_$stamp",
             contentUri = null,
@@ -227,6 +325,7 @@ object SnapshotExporter {
 
         val outFile = File(cacheDir, "call_logs_$stamp.json")
         outFile.writeText(array.toString(2))
+        Log.i(TAG, "Exported Call Logs snapshot: ${outFile.name} (${outFile.length()} bytes, ${array.length()} calls)")
         return DiscoveredMediaItem(
             id = "snapshot_calls_$stamp",
             contentUri = null,

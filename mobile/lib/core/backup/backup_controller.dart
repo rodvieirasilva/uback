@@ -26,6 +26,7 @@ class BackupController extends ChangeNotifier {
   PermissionState _permissions = const PermissionState();
   Map<String, MediaSourceStats> _sourceStats = const {};
   bool _estimatingStats = false;
+  bool _statsRefreshQueued = false;
   bool _hasEstimatedStats = false;
   BackupProgress _progress = const BackupProgress();
   ConnectionTestResult? _connectionResult;
@@ -281,8 +282,13 @@ class BackupController extends ChangeNotifier {
     await _bridge.openAllFilesAccessSettings();
   }
 
+  Future<FolderPickResult?> pickCustomFolder() => _bridge.pickFolder();
+
   Future<void> refreshSourceStats() async {
-    if (_estimatingStats) return;
+    if (_estimatingStats) {
+      _statsRefreshQueued = true;
+      return;
+    }
     _estimatingStats = true;
     notifyListeners();
     try {
@@ -293,6 +299,10 @@ class BackupController extends ChangeNotifier {
     } finally {
       _estimatingStats = false;
       notifyListeners();
+      if (_statsRefreshQueued) {
+        _statsRefreshQueued = false;
+        unawaited(refreshSourceStats());
+      }
     }
   }
 

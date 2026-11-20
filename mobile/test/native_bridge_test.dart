@@ -21,7 +21,7 @@ void main() {
         case 'getDeviceName':
           return 'Galaxy S23 FE';
         case 'getAppVersion':
-          return '1.2.0+3';
+          return '1.2.1+4';
         case 'checkPermissions':
         case 'requestMediaPermissions':
         case 'requestSnapshotPermissions':
@@ -30,6 +30,8 @@ void main() {
         case 'startBackup':
         case 'stopBackup':
           return null;
+        case 'pickFolder':
+          return {'relativePath': 'DJI/Media'};
         case 'discoverMedia':
           return [
             {
@@ -105,7 +107,7 @@ void main() {
     );
 
     expect(await bridge.getDeviceName(), 'Galaxy S23 FE');
-    expect(await bridge.getAppVersion(), '1.2.0+3');
+    expect(await bridge.getAppVersion(), '1.2.1+4');
 
     final perms = await bridge.checkPermissions();
     expect(perms.hasMedia, isTrue);
@@ -115,6 +117,9 @@ void main() {
     await bridge.requestMediaPermissions();
     await bridge.requestSnapshotPermissions({'snapshots.contacts'});
     await bridge.openAllFilesAccessSettings();
+    final picked = await bridge.pickFolder();
+    expect(picked?.hasPath, isTrue);
+    expect(picked?.relativePath, 'DJI/Media');
 
     final items = await bridge.discoverMedia(
       enabledSourceIds: {'camera.images', 'snapshots.contacts'},

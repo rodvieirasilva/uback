@@ -209,9 +209,12 @@ class _SourceNodeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final leftPad = 8.0 + (depth * 18.0);
-    final estimateText = switch ((estimating, hasEstimated)) {
-      (true, false) => '${node.subtitle} • Estimating...',
-      (_, true) => '${stat.fileCount} files • ${PathSanitizer.formatBytes(stat.totalBytes)}',
+    final estimateText = switch ((estimating, hasEstimated, stat.permissionRequired)) {
+      (true, false, _) => '${node.subtitle} • Estimating...',
+      (_, true, true) when stat.fileCount == 0 => 'Permission required • Toggle to grant',
+      (_, true, true) =>
+        '${stat.fileCount} files • ${PathSanitizer.formatBytes(stat.totalBytes)} • Permission needed',
+      (_, true, false) => '${stat.fileCount} files • ${PathSanitizer.formatBytes(stat.totalBytes)}',
       _ => node.subtitle,
     };
 

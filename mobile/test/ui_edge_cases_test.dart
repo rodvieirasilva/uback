@@ -15,6 +15,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
       StreamController<BackupProgress>.broadcast();
   PermissionState permissions;
   ConnectionTestResult nextConnResult;
+  FolderPickResult? nextFolderPickResult;
   bool openedAllFiles = false;
   bool stoppedBackup = false;
   List<BackupItem> discoveredItems;
@@ -30,7 +31,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Test Phone';
   @override
-  Future<String> getAppVersion() async => '1.2.0+3';
+  Future<String> getAppVersion() async => '1.2.1+4';
   @override
   Future<PermissionState> checkPermissions() async => permissions;
   @override
@@ -50,6 +51,9 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   Future<void> openAllFilesAccessSettings() async {
     openedAllFiles = true;
   }
+
+  @override
+  Future<FolderPickResult?> pickFolder() async => nextFolderPickResult;
 
   @override
   Future<List<BackupItem>> discoverMedia({
@@ -225,17 +229,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('SMB connected OK'), findsOneWidget);
 
-    // Add then remove a custom folder
-    await tester.ensureVisible(find.byKey(AppTestKeys.settingsCustomFolderPath));
-    await tester.enterText(find.byKey(AppTestKeys.settingsCustomFolderPath), 'GoPro');
+    // Browse folder error -> shows inline error message
+    bridge.nextFolderPickResult = const FolderPickResult(
+      error: 'Please select a specific subfolder instead of the root of internal storage.',
+    );
+    await tester.ensureVisible(find.byKey(AppTestKeys.settingsBrowseCustomFolder));
+    await tester.tap(find.byKey(AppTestKeys.settingsBrowseCustomFolder));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('select a specific subfolder'), findsOneWidget);
+
+    // Browse folder success -> auto-fills path & display name -> Add & remove
+    bridge.nextFolderPickResult = const FolderPickResult(relativePath: 'GoPro/Hero12');
+    await tester.tap(find.byKey(AppTestKeys.settingsBrowseCustomFolder));
+    await tester.pumpAndSettle();
+    expect(find.text('GoPro/Hero12'), findsOneWidget);
+    expect(find.text('Hero12'), findsOneWidget);
+
     await tester.ensureVisible(find.byKey(AppTestKeys.settingsAddCustomFolder));
     await tester.tap(find.byKey(AppTestKeys.settingsAddCustomFolder));
     await tester.pumpAndSettle();
-    expect(find.byKey(AppTestKeys.settingsRemoveCustomFolder('custom.gopro')), findsOneWidget);
+    expect(find.byKey(AppTestKeys.settingsRemoveCustomFolder('custom.gopro-hero12')), findsOneWidget);
 
-    await tester.tap(find.byKey(AppTestKeys.settingsRemoveCustomFolder('custom.gopro')));
+    await tester.tap(find.byKey(AppTestKeys.settingsRemoveCustomFolder('custom.gopro-hero12')));
     await tester.pumpAndSettle();
-    expect(find.byKey(AppTestKeys.settingsRemoveCustomFolder('custom.gopro')), findsNothing);
+    expect(find.byKey(AppTestKeys.settingsRemoveCustomFolder('custom.gopro-hero12')), findsNothing);
 
     // Edit host -> Save -> reopen -> Reset to defaults
     await tester.ensureVisible(find.byKey(AppTestKeys.settingsHost));
