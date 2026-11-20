@@ -58,6 +58,7 @@ class _StubBridge implements NativeBackupBridge {
     required Set<String> enabledSourceIds,
     List<CustomFolderConfig> customFolders = const [],
     int? perSourceLimit,
+    String? whatsappKey,
   }) async =>
       [
         BackupItem(
@@ -72,7 +73,7 @@ class _StubBridge implements NativeBackupBridge {
         ),
       ];
   @override
-  Future<String> getAppVersion() async => '1.2.3';
+  Future<String> getAppVersion() async => '1.2.4';
   @override
   Future<BackupProgress> getBackupStatus() async => const BackupProgress();
   @override
@@ -80,6 +81,7 @@ class _StubBridge implements NativeBackupBridge {
   @override
   Future<Map<String, MediaSourceStats>> getSourceStats({
     List<CustomFolderConfig> customFolders = const [],
+    String? whatsappKey,
   }) async =>
       const {};
   @override

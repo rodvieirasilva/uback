@@ -20,6 +20,8 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   bool pausedBackup = false;
   bool resumedBackup = false;
   bool stoppedBackup = false;
+  BackupProgress latestPolledStatus = const BackupProgress();
+  int getSourceStatsCalls = 0;
   List<BackupItem> discoveredItems;
 
   _InteractiveFakeBridge({
@@ -33,7 +35,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Test Phone';
   @override
-  Future<String> getAppVersion() async => '1.2.3';
+  Future<String> getAppVersion() async => '1.2.4';
   @override
   Future<PermissionState> checkPermissions() async => permissions;
   @override
@@ -62,14 +64,18 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
     required Set<String> enabledSourceIds,
     List<CustomFolderConfig> customFolders = const [],
     int? perSourceLimit,
+    String? whatsappKey,
   }) async =>
       discoveredItems;
 
   @override
   Future<Map<String, MediaSourceStats>> getSourceStats({
     List<CustomFolderConfig> customFolders = const [],
-  }) async =>
-      const {'camera.images': MediaSourceStats(fileCount: 2, totalBytes: 2048)};
+    String? whatsappKey,
+  }) async {
+    getSourceStatsCalls++;
+    return const {'camera.images': MediaSourceStats(fileCount: 2, totalBytes: 2048)};
+  }
 
   @override
   Future<ConnectionTestResult> testConnection(AppSettings settings) async => nextConnResult;
@@ -129,7 +135,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   }
 
   @override
-  Future<BackupProgress> getBackupStatus() async => const BackupProgress();
+  Future<BackupProgress> getBackupStatus() async => latestPolledStatus;
 
   @override
   Stream<BackupProgress> progressStream() => _progressCtrl.stream;
@@ -301,13 +307,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(AppTestKeys.settingsRemoveCustomFolder('custom.gopro-hero12')), findsNothing);
 
-    // Edit host -> Save -> reopen -> Reset to defaults
+    // Edit host + WhatsApp 64-digit key -> Save -> reopen -> Reset to defaults
     await tester.ensureVisible(find.byKey(AppTestKeys.settingsHost));
     await tester.enterText(find.byKey(AppTestKeys.settingsHost), '10.0.0.55');
+    await tester.ensureVisible(find.byKey(AppTestKeys.settingsWhatsappKey));
+    await tester.enterText(
+      find.byKey(AppTestKeys.settingsWhatsappKey),
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    );
     await tester.ensureVisible(find.byKey(AppTestKeys.settingsSave));
     await tester.tap(find.byKey(AppTestKeys.settingsSave));
     await tester.pumpAndSettle();
     expect(controller.settings.host, '10.0.0.55');
+    expect(
+      controller.settings.whatsappKey,
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    );
 
     await tester.tap(find.byKey(AppTestKeys.openSettings));
     await tester.pumpAndSettle();
@@ -318,6 +333,7 @@ void main() {
     await tester.tap(find.byKey(AppTestKeys.settingsResetDefaults));
     await tester.pumpAndSettle();
     expect(controller.settings.host, '192.168.1.10');
+    expect(controller.settings.whatsappKey, '');
   });
 
   test('BackupController guards unconfigured destination, empty sources, crop perm, MB limit, and empty discovery',
@@ -360,5 +376,41 @@ void main() {
     expect(emptyDiscovery.currentLimit?.maxBytes, 50 * 1024 * 1024);
     await emptyDiscovery.startBackup();
     expect(emptyDiscovery.statusMessage, contains('No files found'));
+
+    // Verify onAppResumed() syncs active backup progress from native service after screen lock / app switch
+    // without triggering redundant MediaStore scans while active, then refreshes stats once completed.
+    final resumeBridge = _InteractiveFakeBridge();
+    final resumeCtrl = BackupController(settingsRepo: _repo(), bridge: resumeBridge);
+    await resumeCtrl.init();
+    final scansAfterInit = resumeBridge.getSourceStatsCalls;
+
+    resumeBridge.latestPolledStatus = const BackupProgress(
+      state: BackupRunState.running,
+      stage: 'uploading',
+      total: 10,
+      transferred: 6,
+      remaining: 4,
+      elapsedMs: 45000,
+      etaMs: 30000,
+      currentFile: 'VID_2025.mp4',
+    );
+    await resumeCtrl.onAppResumed();
+    expect(resumeCtrl.progress.state, BackupRunState.running);
+    expect(resumeCtrl.progress.transferred, 6);
+    expect(resumeCtrl.progress.currentFile, 'VID_2025.mp4');
+    // Must NOT re-scan MediaStore while backup is active
+    expect(resumeBridge.getSourceStatsCalls, scansAfterInit);
+
+    resumeBridge.latestPolledStatus = const BackupProgress(
+      state: BackupRunState.completed,
+      stage: 'completed',
+      total: 10,
+      transferred: 10,
+      remaining: 0,
+    );
+    await resumeCtrl.onAppResumed();
+    expect(resumeCtrl.progress.state, BackupRunState.completed);
+    expect(resumeBridge.getSourceStatsCalls, greaterThan(scansAfterInit));
+    resumeCtrl.dispose();
   });
 }

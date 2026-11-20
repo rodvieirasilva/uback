@@ -34,9 +34,11 @@ abstract class NativeBackupBridge {
     required Set<String> enabledSourceIds,
     List<CustomFolderConfig> customFolders = const [],
     int? perSourceLimit,
+    String? whatsappKey,
   });
   Future<Map<String, MediaSourceStats>> getSourceStats({
     List<CustomFolderConfig> customFolders = const [],
+    String? whatsappKey,
   });
   Future<ConnectionTestResult> testConnection(AppSettings settings);
   Future<void> startBackup({
@@ -108,6 +110,7 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
     required Set<String> enabledSourceIds,
     List<CustomFolderConfig> customFolders = const [],
     int? perSourceLimit,
+    String? whatsappKey,
   }) async {
     final raw = await _methodChannel.invokeListMethod<Object?>(
       'discoverMedia',
@@ -115,6 +118,7 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
         'enabledSources': enabledSourceIds.toList(),
         'customFolders': customFolders.map((f) => f.toMap()).toList(),
         'perSourceLimit': ?perSourceLimit,
+        if (whatsappKey != null && whatsappKey.trim().isNotEmpty) 'whatsappKey': whatsappKey.trim(),
       },
     );
     if (raw == null) return const [];
@@ -127,11 +131,13 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
   @override
   Future<Map<String, MediaSourceStats>> getSourceStats({
     List<CustomFolderConfig> customFolders = const [],
+    String? whatsappKey,
   }) async {
     final raw = await _methodChannel.invokeMapMethod<Object?, Object?>(
       'getSourceStats',
       {
         'customFolders': customFolders.map((f) => f.toMap()).toList(),
+        if (whatsappKey != null && whatsappKey.trim().isNotEmpty) 'whatsappKey': whatsappKey.trim(),
       },
     );
     if (raw == null) return const {};

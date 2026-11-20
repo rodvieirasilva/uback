@@ -145,6 +145,7 @@ class MainActivity : FlutterActivity() {
                     ?: MediaSourceClassifier.ALL_BUILTIN_SOURCE_IDS
                 val customFolders = parseCustomFolders(call.argument<List<*>>("customFolders"))
                 val perSourceLimit = call.argument<Number>("perSourceLimit")?.toInt()
+                val whatsappKey = call.argument<String>("whatsappKey")
                 scope.launch {
                     try {
                         val items = withContext(Dispatchers.IO) {
@@ -153,6 +154,7 @@ class MainActivity : FlutterActivity() {
                                 enabledSources = enabledSources,
                                 customFolders = customFolders,
                                 perSourceLimit = perSourceLimit,
+                                whatsappKey = whatsappKey,
                             ).map { it.toMap() }
                         }
                         result.success(items)
@@ -164,10 +166,11 @@ class MainActivity : FlutterActivity() {
 
             "getSourceStats" -> {
                 val customFolders = parseCustomFolders(call.argument<List<*>>("customFolders"))
+                val whatsappKey = call.argument<String>("whatsappKey")
                 scope.launch {
                     try {
                         val stats = withContext(Dispatchers.IO) {
-                            MediaDiscovery.getSourceStats(applicationContext, customFolders)
+                            MediaDiscovery.getSourceStats(applicationContext, customFolders, whatsappKey)
                         }
                         result.success(stats)
                     } catch (e: Throwable) {
@@ -225,6 +228,9 @@ class MainActivity : FlutterActivity() {
                         sizeBytes = (m["sizeBytes"] as? Number)?.toLong() ?: 0L,
                         createdAtMs = (m["createdAtMs"] as? Number)?.toLong() ?: 0L,
                         isSnapshot = (m["isSnapshot"] as? Boolean) ?: false,
+                        isReadOnly = (m["isReadOnly"] as? Boolean) ?: false,
+                        deltaScope = m["deltaScope"] as? String,
+                        deltaMaxRowId = (m["deltaMaxRowId"] as? Number)?.toLong() ?: 0L,
                     )
                 }
 
@@ -362,6 +368,11 @@ class MainActivity : FlutterActivity() {
                 )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        BackupSessionBus.reEmitLatest()
     }
 
     override fun onDestroy() {

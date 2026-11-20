@@ -22,6 +22,9 @@ class BackupItem {
   final DateTime createdAt; // Used for oldest-first sorting and YYYY/MM pathing
   final String mimeType;
   final bool isSnapshot;
+  final bool isReadOnly;
+  final String? deltaScope;
+  final int deltaMaxRowId;
 
   const BackupItem({
     required this.id,
@@ -34,6 +37,9 @@ class BackupItem {
     required this.createdAt,
     required this.mimeType,
     this.isSnapshot = false,
+    this.isReadOnly = false,
+    this.deltaScope,
+    this.deltaMaxRowId = 0,
   }) : sourceId = sourceId ?? sourceFolder;
 
   factory BackupItem.fromMap(Map<Object?, Object?> map) {
@@ -50,6 +56,9 @@ class BackupItem {
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMs),
       mimeType: (map['mimeType'] as String?) ?? 'application/octet-stream',
       isSnapshot: (map['isSnapshot'] as bool?) ?? false,
+      isReadOnly: (map['isReadOnly'] as bool?) ?? false,
+      deltaScope: map['deltaScope'] as String?,
+      deltaMaxRowId: (map['deltaMaxRowId'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -64,6 +73,9 @@ class BackupItem {
         'createdAtMs': createdAt.millisecondsSinceEpoch,
         'mimeType': mimeType,
         'isSnapshot': isSnapshot,
+        'isReadOnly': isReadOnly,
+        'deltaScope': deltaScope,
+        'deltaMaxRowId': deltaMaxRowId,
       };
 }
 

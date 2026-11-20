@@ -32,6 +32,7 @@ class BackupController extends ChangeNotifier {
   ConnectionTestResult? _connectionResult;
   bool _testingConnection = false;
   bool _initialized = false;
+  bool _disposed = false;
   String? _statusMessage;
 
   BackupController({
@@ -263,10 +264,40 @@ class BackupController extends ChangeNotifier {
     unawaited(refreshSourceStats());
   }
 
+  Future<void> _pollActiveBackupStatus() async {
+    try {
+      final latest = await _bridge.getBackupStatus();
+      // Do not overwrite Dart-side 'scanning' phase before native service has started.
+      if (_progress.state == BackupRunState.scanning && latest.state == BackupRunState.idle) {
+        return;
+      }
+      final wasActive = _progress.isActive;
+      _progress = latest;
+      notifyListeners();
+      if (wasActive && !latest.isActive && _permissions.hasMedia) {
+        unawaited(refreshSourceStats());
+      }
+    } catch (_) {}
+  }
+
+  /// Called when the app returns to the foreground after screen unlock or app switching.
+  /// Immediately syncs live progress from [BackupForegroundService] and avoids redundant
+  /// MediaStore re-scans while a backup is actively running.
+  Future<void> onAppResumed() async {
+    await _pollActiveBackupStatus();
+    try {
+      _permissions = await _bridge.checkPermissions();
+      notifyListeners();
+    } catch (_) {}
+    if (_permissions.hasMedia && !_progress.isActive) {
+      unawaited(refreshSourceStats());
+    }
+  }
+
   Future<void> refreshPermissions() async {
     _permissions = await _bridge.checkPermissions();
     notifyListeners();
-    if (_permissions.hasMedia) {
+    if (_permissions.hasMedia && !_progress.isActive) {
       unawaited(refreshSourceStats());
     }
   }
@@ -293,7 +324,10 @@ class BackupController extends ChangeNotifier {
     _estimatingStats = true;
     notifyListeners();
     try {
-      _sourceStats = await _bridge.getSourceStats(customFolders: _settings.customFolders);
+      _sourceStats = await _bridge.getSourceStats(
+        customFolders: _settings.customFolders,
+        whatsappKey: _settings.whatsappKey,
+      );
       _hasEstimatedStats = true;
     } catch (_) {
       // Keep previous estimate if query fails transiently.
@@ -308,11 +342,15 @@ class BackupController extends ChangeNotifier {
   }
 
   Future<void> saveSettings(AppSettings updated) async {
+    final keyChanged = updated.whatsappKey != _settings.whatsappKey;
     _settings = updated;
     _rebuildMediaSources();
     await _settingsRepo.save(updated);
     _connectionResult = null;
     notifyListeners();
+    if (keyChanged && _permissions.hasMedia) {
+      unawaited(refreshSourceStats());
+    }
   }
 
   Future<AppSettings> resetSettingsToDefaults() async {
@@ -320,6 +358,9 @@ class BackupController extends ChangeNotifier {
     _rebuildMediaSources();
     _connectionResult = null;
     notifyListeners();
+    if (_permissions.hasMedia) {
+      unawaited(refreshSourceStats());
+    }
     return _settings;
   }
 
@@ -463,7 +504,14 @@ class BackupController extends ChangeNotifier {
   }
 
   @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
+  @override
   void dispose() {
+    _disposed = true;
     _progressSub?.cancel();
     super.dispose();
   }

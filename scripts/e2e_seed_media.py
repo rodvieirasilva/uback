@@ -5,9 +5,14 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+import sqlite3
 import struct
+import subprocess
 import sys
+import tempfile
 import zlib
+
+E2E_WHATSAPP_TEST_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 
 def make_minimal_png(tag: bytes, extra_kb: int = 4) -> bytes:
@@ -68,6 +73,54 @@ def make_minimal_txt(tag: bytes, extra_kb: int = 4) -> bytes:
     return b"UBack E2E Document: " + tag + b"\n" + (b"T" * (extra_kb * 1024)) + b"\n"
 
 
+def make_real_whatsapp_crypt15(key_hex64: str) -> bytes:
+    """Create a real SQLite WhatsApp msgstore DB and encrypt it to spec-compliant .crypt15."""
+    script_dir = Path(__file__).resolve().parent
+    java_helper = script_dir / "e2e_make_crypt15.java"
+    with tempfile.TemporaryDirectory(prefix="uback-wa-seed-") as tmp:
+        tmp_path = Path(tmp)
+        sqlite_path = tmp_path / "msgstore.db"
+        crypt15_path = tmp_path / "msgstore.db.crypt15"
+
+        conn = sqlite3.connect(sqlite_path)
+        try:
+            conn.executescript(
+                """
+                PRAGMA journal_mode=DELETE;
+                CREATE TABLE jid (_id INTEGER PRIMARY KEY, raw_string TEXT NOT NULL);
+                CREATE TABLE chat (_id INTEGER PRIMARY KEY, jid_row_id INTEGER NOT NULL, subject TEXT);
+                CREATE TABLE message (
+                    _id INTEGER PRIMARY KEY,
+                    chat_row_id INTEGER NOT NULL,
+                    sender_jid_row_id INTEGER NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    text_data TEXT
+                );
+                CREATE TABLE message_media (
+                    message_row_id INTEGER PRIMARY KEY,
+                    file_path TEXT,
+                    mime_type TEXT
+                );
+                INSERT INTO jid VALUES (1, '5511999990001@s.whatsapp.net');
+                INSERT INTO jid VALUES (2, '5511999990002@s.whatsapp.net');
+                INSERT INTO chat VALUES (10, 1, 'UBack E2E Chat');
+                INSERT INTO message VALUES (1, 10, 1, 1717200000000, 'UBack E2E Message 1');
+                INSERT INTO message VALUES (2, 10, 2, 1717203600000, 'UBack E2E Message 2');
+                INSERT INTO message VALUES (3, 10, 1, 1717207200000, 'UBack E2E Message 3');
+                INSERT INTO message_media VALUES (2, 'Media/WhatsApp Images/IMG-E2E.jpg', 'image/jpeg');
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        subprocess.run(
+            ["java", str(java_helper), str(sqlite_path), key_hex64, str(crypt15_path)],
+            check=True,
+        )
+        return crypt15_path.read_bytes()
+
+
 def main() -> int:
     if len(sys.argv) not in (2, 3):
         print(f"Usage: {sys.argv[0]} <seed_dir> [--big-file]", file=sys.stderr)
@@ -94,6 +147,9 @@ def main() -> int:
         "VID-20240201-WA0002.mp4": make_minimal_mp4(b"oldest-wa-sent-vid-8", 32),
         "VID_20240315_120000.mp4": make_minimal_mp4(b"oldest-cam-vid-9", video_kb),
         "drone_2024.mp4": make_minimal_mp4(b"oldest-custom-dji-10", 28),
+        # Read-only WhatsApp Chat Databases & Backups (real .crypt15 for incremental SQLite delta E2E!)
+        "msgstore.db.crypt15": make_real_whatsapp_crypt15(E2E_WHATSAPP_TEST_KEY),
+        "wa.db.crypt15": b"WHATSAPP_CRYPT15_BACKUP_MOCK_" + (b"B" * (8 * 1024)),
         "IMG-20250620-WA0003.jpg": make_minimal_jpeg(b"newest-wa-recv-img-11", 20),
         # Opt-in source (Download) starts unchecked by default — MUST NOT be backed up or deleted
         "random_download.jpg": make_minimal_jpeg(b"ignored-download", 10),

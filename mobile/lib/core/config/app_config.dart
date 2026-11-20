@@ -19,10 +19,12 @@ class CompileTimeDefaults {
   static const String username = String.fromEnvironment('UBACK_SMB_USERNAME', defaultValue: '');
   static const String password = String.fromEnvironment('UBACK_SMB_PASSWORD', defaultValue: '');
   static const String domain = String.fromEnvironment('UBACK_SMB_DOMAIN', defaultValue: '');
+  static const String whatsappKey =
+      String.fromEnvironment('UBACK_WHATSAPP_KEY', defaultValue: '');
   static const String e2eDeviceOverride =
       String.fromEnvironment('UBACK_E2E_DEVICE_OVERRIDE', defaultValue: '');
   static const String appVersion =
-      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.3');
+      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.4');
   static const String buildDate =
       String.fromEnvironment('UBACK_BUILD_DATE', defaultValue: '');
   static const String gitSha =
@@ -55,6 +57,7 @@ class CompileTimeDefaults {
       username: username,
       password: password,
       domain: domain,
+      whatsappKey: whatsappKey,
       deviceFolderOverride: e2eDeviceOverride,
       enabledSourceIds: defaultEnabledMediaSourceIds,
     );
@@ -76,6 +79,7 @@ class AppSettings {
   final String username;
   final String password;
   final String domain;
+  final String whatsappKey;
   final String deviceFolderOverride;
   final Set<String> enabledSourceIds;
   final List<CustomFolderConfig> customFolders;
@@ -95,6 +99,7 @@ class AppSettings {
     required this.username,
     required this.password,
     required this.domain,
+    this.whatsappKey = '',
     required this.deviceFolderOverride,
     this.enabledSourceIds = defaultEnabledMediaSourceIds,
     this.customFolders = const [],
@@ -136,6 +141,7 @@ class AppSettings {
     String? username,
     String? password,
     String? domain,
+    String? whatsappKey,
     String? deviceFolderOverride,
     Set<String>? enabledSourceIds,
     List<CustomFolderConfig>? customFolders,
@@ -155,6 +161,7 @@ class AppSettings {
       username: username ?? this.username,
       password: password ?? this.password,
       domain: domain ?? this.domain,
+      whatsappKey: whatsappKey ?? this.whatsappKey,
       deviceFolderOverride: deviceFolderOverride ?? this.deviceFolderOverride,
       enabledSourceIds: enabledSourceIds ?? this.enabledSourceIds,
       customFolders: customFolders ?? this.customFolders,
@@ -239,6 +246,7 @@ class AppSettingsRepository {
 
   static const _kSecretUser = 'uback_smb_username';
   static const _kSecretPass = 'uback_smb_password';
+  static const _kSecretWhatsappKey = 'uback_whatsapp_key';
 
   final KeyValueStore _plainStore;
   final KeyValueStore _secureStore;
@@ -313,9 +321,11 @@ class AppSettingsRepository {
 
     String? username;
     String? password;
+    String? whatsappKey;
     try {
       username = await _secureStore.read(_kSecretUser);
       password = await _secureStore.read(_kSecretPass);
+      whatsappKey = await _secureStore.read(_kSecretWhatsappKey);
     } catch (_) {
       // Fallback safely to compile-time defaults if keystore read fails
     }
@@ -336,6 +346,7 @@ class AppSettingsRepository {
       username: username ?? _defaults.username,
       password: password ?? _defaults.password,
       domain: domain ?? _defaults.domain,
+      whatsappKey: whatsappKey ?? _defaults.whatsappKey,
       deviceFolderOverride: deviceOverride ?? _defaults.deviceFolderOverride,
       enabledSourceIds: enabledSourceIds,
       customFolders: customFolders,
@@ -366,6 +377,7 @@ class AppSettingsRepository {
 
     await _secureStore.write(_kSecretUser, settings.username.trim());
     await _secureStore.write(_kSecretPass, settings.password);
+    await _secureStore.write(_kSecretWhatsappKey, settings.whatsappKey.trim());
   }
 
   Future<AppSettings> resetToDefaults() async {
@@ -391,6 +403,7 @@ class AppSettingsRepository {
     try {
       await _secureStore.delete(_kSecretUser);
       await _secureStore.delete(_kSecretPass);
+      await _secureStore.delete(_kSecretWhatsappKey);
     } catch (_) {}
     return _defaults;
   }

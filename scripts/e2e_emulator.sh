@@ -134,6 +134,19 @@ start_smb_server() {
   fi
 }
 
+push_file() {
+  local src="$1"
+  local dst="$2"
+  for attempt in 1 2 3; do
+    if adb -s "$EMU_SERIAL" push "$src" "$dst" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+    adb -s "$EMU_SERIAL" shell "mkdir -p '$(dirname "$dst")'" >/dev/null 2>&1 || true
+  done
+  adb -s "$EMU_SERIAL" push "$src" "$dst" >/dev/null
+}
+
 seed_emulator_media() {
   if [[ "$CHAOS_MODE" == "1" ]]; then
     python3 "$REPO_ROOT/scripts/e2e_seed_media.py" "$SEED_DIR" --big-file
@@ -141,25 +154,28 @@ seed_emulator_media() {
     python3 "$REPO_ROOT/scripts/e2e_seed_media.py" "$SEED_DIR"
   fi
 
-  local WA_MEDIA="/sdcard/Android/media/com.whatsapp/WhatsApp/Media"
-  adb -s "$EMU_SERIAL" shell "rm -rf /sdcard/DCIM/Camera/* /sdcard/DCIM/Screenshots/* /sdcard/Pictures/Screenshots/* '/sdcard/DCIM/Screen recordings/'* /sdcard/Movies/Screenrecords/* '/sdcard/Pictures/WhatsApp Images/'* '$WA_MEDIA' /sdcard/Recordings/* /sdcard/Documents/* /sdcard/DJI /sdcard/Download/random_download.jpg && mkdir -p /sdcard/DCIM/Camera /sdcard/Pictures/Screenshots /sdcard/Movies/Screenrecords '$WA_MEDIA/WhatsApp Images' '$WA_MEDIA/WhatsApp Video/Sent' '$WA_MEDIA/WhatsApp Voice Notes/202218' '$WA_MEDIA/WhatsApp Documents' '/sdcard/Recordings/Voice Recorder' /sdcard/Documents /sdcard/DJI/Media /sdcard/Download"
+  local WA_ROOT="/sdcard/Android/media/com.whatsapp/WhatsApp"
+  local WA_MEDIA="$WA_ROOT/Media"
+  adb -s "$EMU_SERIAL" shell "rm -rf /sdcard/DCIM/Camera/* /sdcard/DCIM/Screenshots/* /sdcard/Pictures/Screenshots/* '/sdcard/DCIM/Screen recordings/'* /sdcard/Movies/Screenrecords/* '/sdcard/Pictures/WhatsApp Images/'* '$WA_ROOT' /sdcard/Recordings/* /sdcard/Documents/* /sdcard/DJI /sdcard/Download/random_download.jpg && mkdir -p /sdcard/DCIM/Camera /sdcard/Pictures/Screenshots /sdcard/Movies/Screenrecords '$WA_MEDIA/WhatsApp Images' '$WA_MEDIA/WhatsApp Video/Sent' '$WA_MEDIA/WhatsApp Voice Notes/202218' '$WA_MEDIA/WhatsApp Documents' '$WA_ROOT/Databases' '$WA_ROOT/Backups' '/sdcard/Recordings/Voice Recorder' /sdcard/Documents /sdcard/DJI/Media /sdcard/Download"
 
   # Place .nomedia inside WhatsApp Sent, Voice Notes, and Documents just like real Android!
   adb -s "$EMU_SERIAL" shell "touch '$WA_MEDIA/WhatsApp Video/Sent/.nomedia' '$WA_MEDIA/WhatsApp Voice Notes/.nomedia' '$WA_MEDIA/WhatsApp Documents/.nomedia'"
 
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/PTT-20220501-WA0001.opus" "$WA_MEDIA/WhatsApp Voice Notes/202218/PTT-20220501-WA0001.opus" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/IMG_20230110_090000.jpg" "/sdcard/DCIM/Camera/IMG_20230110_090000.jpg" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/IMG_20230110_090000_DUP.jpg" "/sdcard/DCIM/Camera/IMG_20230110_090000_DUP.jpg" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/invoice_2023.pdf" "$WA_MEDIA/WhatsApp Documents/invoice_2023.pdf" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/REC_20230412_100000.m4a" "/sdcard/Recordings/Voice Recorder/REC_20230412_100000.m4a" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/Screenshot_20230705_110000.png" "/sdcard/Pictures/Screenshots/Screenshot_20230705_110000.png" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/Screen_20230901_140000.mp4" "/sdcard/Movies/Screenrecords/Screen_20230901_140000.mp4" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/notes_2024.txt" "/sdcard/Documents/notes_2024.txt" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/VID-20240201-WA0002.mp4" "$WA_MEDIA/WhatsApp Video/Sent/VID-20240201-WA0002.mp4" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/VID_20240315_120000.mp4" "/sdcard/DCIM/Camera/VID_20240315_120000.mp4" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/drone_2024.mp4" "/sdcard/DJI/Media/drone_2024.mp4" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/IMG-20250620-WA0003.jpg" "$WA_MEDIA/WhatsApp Images/IMG-20250620-WA0003.jpg" >/dev/null
-  adb -s "$EMU_SERIAL" push "$SEED_DIR/random_download.jpg" "/sdcard/Download/random_download.jpg" >/dev/null
+  push_file "$SEED_DIR/PTT-20220501-WA0001.opus" "$WA_MEDIA/WhatsApp Voice Notes/202218/PTT-20220501-WA0001.opus"
+  push_file "$SEED_DIR/IMG_20230110_090000.jpg" "/sdcard/DCIM/Camera/IMG_20230110_090000.jpg"
+  push_file "$SEED_DIR/IMG_20230110_090000_DUP.jpg" "/sdcard/DCIM/Camera/IMG_20230110_090000_DUP.jpg"
+  push_file "$SEED_DIR/invoice_2023.pdf" "$WA_MEDIA/WhatsApp Documents/invoice_2023.pdf"
+  push_file "$SEED_DIR/REC_20230412_100000.m4a" "/sdcard/Recordings/Voice Recorder/REC_20230412_100000.m4a"
+  push_file "$SEED_DIR/Screenshot_20230705_110000.png" "/sdcard/Pictures/Screenshots/Screenshot_20230705_110000.png"
+  push_file "$SEED_DIR/Screen_20230901_140000.mp4" "/sdcard/Movies/Screenrecords/Screen_20230901_140000.mp4"
+  push_file "$SEED_DIR/notes_2024.txt" "/sdcard/Documents/notes_2024.txt"
+  push_file "$SEED_DIR/VID-20240201-WA0002.mp4" "$WA_MEDIA/WhatsApp Video/Sent/VID-20240201-WA0002.mp4"
+  push_file "$SEED_DIR/VID_20240315_120000.mp4" "/sdcard/DCIM/Camera/VID_20240315_120000.mp4"
+  push_file "$SEED_DIR/drone_2024.mp4" "/sdcard/DJI/Media/drone_2024.mp4"
+  push_file "$SEED_DIR/msgstore.db.crypt15" "$WA_ROOT/Databases/msgstore.db.crypt15"
+  push_file "$SEED_DIR/wa.db.crypt15" "$WA_ROOT/Backups/wa.db.crypt15"
+  push_file "$SEED_DIR/IMG-20250620-WA0003.jpg" "$WA_MEDIA/WhatsApp Images/IMG-20250620-WA0003.jpg"
+  push_file "$SEED_DIR/random_download.jpg" "/sdcard/Download/random_download.jpg"
 
   adb -s "$EMU_SERIAL" shell "touch -t 202205010800.00 '$WA_MEDIA/WhatsApp Voice Notes/202218/PTT-20220501-WA0001.opus'"
   adb -s "$EMU_SERIAL" shell "touch -t 202301100900.00 /sdcard/DCIM/Camera/IMG_20230110_090000.jpg"
@@ -172,6 +188,8 @@ seed_emulator_media() {
   adb -s "$EMU_SERIAL" shell "touch -t 202402011130.00 '$WA_MEDIA/WhatsApp Video/Sent/VID-20240201-WA0002.mp4'"
   adb -s "$EMU_SERIAL" shell "touch -t 202403151200.00 /sdcard/DCIM/Camera/VID_20240315_120000.mp4"
   adb -s "$EMU_SERIAL" shell "touch -t 202405101600.00 /sdcard/DJI/Media/drone_2024.mp4"
+  adb -s "$EMU_SERIAL" shell "touch -t 202406010300.00 '$WA_ROOT/Databases/msgstore.db.crypt15'"
+  adb -s "$EMU_SERIAL" shell "touch -t 202406020300.00 '$WA_ROOT/Backups/wa.db.crypt15'"
   adb -s "$EMU_SERIAL" shell "touch -t 202506201800.00 '$WA_MEDIA/WhatsApp Images/IMG-20250620-WA0003.jpg'"
   adb -s "$EMU_SERIAL" shell "touch -t 202101010800.00 /sdcard/Download/random_download.jpg"
   adb -s "$EMU_SERIAL" shell "content call --uri content://media/ --method scan_volume --arg external_primary" >/dev/null 2>&1 || true
@@ -243,6 +261,17 @@ verify_emulator_cleanup() {
     exit 1
   fi
 
+  # Verify Crop Mode NEVER deleted read-only WhatsApp Databases & Backups
+  local WA_ROOT="/sdcard/Android/media/com.whatsapp/WhatsApp"
+  for ro_file in \
+    "$WA_ROOT/Databases/msgstore.db.crypt15" \
+    "$WA_ROOT/Backups/wa.db.crypt15"; do
+    if ! adb -s "$EMU_SERIAL" shell "test -e '$ro_file'" 2>/dev/null; then
+      echo "FAIL: Crop Mode unexpectedly deleted read-only WhatsApp DB file: $ro_file" >&2
+      exit 1
+    fi
+  done
+
   # Verify Crop Mode NEVER deleted real Contacts, SMS, or Call Logs
   if ! adb -s "$EMU_SERIAL" shell "content query --uri content://com.android.contacts/data --projection data1" 2>/dev/null | grep -q "UBack Test Contact"; then
     echo "FAIL: Crop Mode unexpectedly affected Contacts!" >&2
@@ -256,7 +285,7 @@ verify_emulator_cleanup() {
     echo "FAIL: Crop Mode unexpectedly affected Call Logs!" >&2
     exit 1
   fi
-  echo "OK: Crop Mode left opt-in Downloads, Contacts, SMS, and Call Logs intact on device."
+  echo "OK: Crop Mode left opt-in Downloads, read-only WhatsApp DBs, Contacts, SMS, and Call Logs intact on device."
 }
 
 ensure_emulator
@@ -276,6 +305,7 @@ DART_DEFINES=(
   "--dart-define=UBACK_SMB_USERNAME=$SMB_USER"
   "--dart-define=UBACK_SMB_PASSWORD=$SMB_PASS"
   "--dart-define=UBACK_SMB_DOMAIN="
+  "--dart-define=UBACK_WHATSAPP_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   "--dart-define=UBACK_E2E_DEVICE_OVERRIDE=rodrigo"
   "--dart-define=UBACK_APP_VERSION=$APP_VERSION"
   "--dart-define=UBACK_BUILD_DATE=$BUILD_DATE"

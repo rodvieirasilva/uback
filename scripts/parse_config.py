@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -57,6 +58,7 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     smb: dict[str, object] = {}
+    whatsapp: dict[str, object] = {}
     destination_type = "smb_nas"
     if config_path.exists():
         with config_path.open("rb") as f:
@@ -67,12 +69,21 @@ def main() -> int:
         smb_section = data.get("smb", {})
         if isinstance(smb_section, dict):
             smb = smb_section
+        wa_section = data.get("whatsapp", {})
+        if isinstance(wa_section, dict):
+            whatsapp = wa_section
         print(f"Loaded compile-time defaults from {config_path}")
     else:
         print(
             f"Note: {config_path} not found; writing empty compile-time defaults "
             f"(copy config.example.toml -> config.toml to inject NAS defaults)."
         )
+
+    whatsapp_key = os.environ.get("UBACK_WHATSAPP_KEY_OVERRIDE")
+    if whatsapp_key is None:
+        whatsapp_key = str(whatsapp.get("backup_key_64", ""))
+    else:
+        whatsapp_key = whatsapp_key.strip()
 
     defines = {
         "UBACK_DESTINATION_TYPE": destination_type,
@@ -83,6 +94,7 @@ def main() -> int:
         "UBACK_SMB_USERNAME": str(smb.get("username", "")),
         "UBACK_SMB_PASSWORD": str(smb.get("password", "")),
         "UBACK_SMB_DOMAIN": str(smb.get("domain", "")),
+        "UBACK_WHATSAPP_KEY": whatsapp_key,
         "UBACK_APP_VERSION": read_pubspec_version(repo_root),
         "UBACK_BUILD_DATE": read_build_date(repo_root),
         "UBACK_GIT_SHA": read_git_sha(repo_root),

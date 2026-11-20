@@ -1,7 +1,7 @@
 name: uback
 description: "UBack — Ultimate Backup Android app with verified SMB backup."
 publish_to: 'none'
-version: 1.2.3
+version: 1.2.4
 
 environment:
   sdk: ^3.14.0

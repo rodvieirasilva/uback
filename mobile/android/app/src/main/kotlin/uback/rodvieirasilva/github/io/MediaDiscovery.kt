@@ -19,6 +19,9 @@ data class DiscoveredMediaItem(
     val createdAtMs: Long,
     val mimeType: String,
     val isSnapshot: Boolean = false,
+    val isReadOnly: Boolean = false,
+    val deltaScope: String? = null,
+    val deltaMaxRowId: Long = 0L,
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
         "id" to id,
@@ -31,6 +34,9 @@ data class DiscoveredMediaItem(
         "createdAtMs" to createdAtMs,
         "mimeType" to mimeType,
         "isSnapshot" to isSnapshot,
+        "isReadOnly" to isReadOnly,
+        "deltaScope" to deltaScope,
+        "deltaMaxRowId" to deltaMaxRowId,
     )
 }
 
@@ -60,6 +66,7 @@ object MediaDiscovery {
         enabledSources: Set<String> = MediaSourceClassifier.ALL_BUILTIN_SOURCE_IDS,
         customFolders: List<CustomFolderSpec> = emptyList(),
         perSourceLimit: Int? = null,
+        whatsappKey: String? = null,
     ): List<DiscoveredMediaItem> {
         if (enabledSources.isEmpty()) return emptyList()
 
@@ -100,6 +107,9 @@ object MediaDiscovery {
         // Read-only device snapshot exports (Contacts / SMS / Call Logs) if enabled.
         collected.addAll(SnapshotExporter.exportEnabledSnapshots(context, enabledSources))
 
+        // Incremental WhatsApp .crypt15 SQLite delta exports (only new messages since last verified watermark).
+        collected.addAll(WhatsAppDeltaExporter.exportEnabledDeltas(context, enabledSources, whatsappKey))
+
         val comparator = compareBy<DiscoveredMediaItem> { it.createdAtMs }
             .thenBy { it.fileName }
             .thenBy { it.id }
@@ -118,11 +128,12 @@ object MediaDiscovery {
 
     /**
      * Fast aggregate stats (count + totalBytes) per leaf source ID across MediaStore,
-     * direct directories (including user custom folders), and device snapshots.
+     * direct directories (including user custom folders), device snapshots, and WhatsApp deltas.
      */
     fun getSourceStats(
         context: Context,
         customFolders: List<CustomFolderSpec> = emptyList(),
+        whatsappKey: String? = null,
     ): Map<String, Map<String, Any>> {
         val allIds = MediaSourceClassifier.BUILTIN_FILE_SOURCE_IDS + customFolders.map { it.id }
         val counts = mutableMapOf<String, Int>()
@@ -146,6 +157,7 @@ object MediaDiscovery {
         }.toMutableMap()
 
         result.putAll(SnapshotExporter.estimateStats(context))
+        result.putAll(WhatsAppDeltaExporter.estimateStats(context, whatsappKey))
         return result
     }
 
@@ -245,6 +257,7 @@ object MediaDiscovery {
                         sizeBytes = size,
                         createdAtMs = createdAtMs,
                         mimeType = MediaSourceClassifier.mimeTypeFor(file.name, kind),
+                        isReadOnly = classified.sourceId in MediaSourceClassifier.READ_ONLY_SOURCE_IDS,
                     ),
                 )
             }
@@ -373,6 +386,7 @@ object MediaDiscovery {
                         sizeBytes = sizeBytes,
                         createdAtMs = createdAtMs,
                         mimeType = mime,
+                        isReadOnly = classified.sourceId in MediaSourceClassifier.READ_ONLY_SOURCE_IDS,
                     ),
                 )
             }
