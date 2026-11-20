@@ -30,6 +30,17 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Purge any oversized legacy checkpoint queue from SharedPreferences on IO thread
+        // so MainLooper and SharedPreferencesImpl never stall on large libraries.
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val prefs = applicationContext.getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                if (prefs.contains("flutter.uback_checkpoint_queue")) {
+                    prefs.edit().remove("flutter.uback_checkpoint_queue").apply()
+                }
+            }
+        }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, METHOD_CHANNEL)
             .setMethodCallHandler { call, result ->
                 handleMethodCall(call, result)
@@ -37,14 +48,19 @@ class MainActivity : FlutterActivity() {
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
+                private var registeredCallback: ((Map<String, Any?>) -> Unit)? = null
+
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    BackupSessionBus.setListener { payload ->
+                    val cb: (Map<String, Any?>) -> Unit = { payload ->
                         events?.success(payload)
                     }
+                    registeredCallback = cb
+                    BackupSessionBus.setListener(cb)
                 }
 
                 override fun onCancel(arguments: Any?) {
-                    BackupSessionBus.setListener(null)
+                    BackupSessionBus.clearListenerIfMatches(registeredCallback)
+                    registeredCallback = null
                 }
             })
     }

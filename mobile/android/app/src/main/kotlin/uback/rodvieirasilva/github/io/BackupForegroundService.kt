@@ -52,8 +52,19 @@ data class BackupJobRequest(
 
 object BackupSessionBus {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private const val UI_EMIT_THROTTLE_MS = 80L
     @Volatile
     private var listener: ((Map<String, Any?>) -> Unit)? = null
+    private val uiFlushScheduled = AtomicBoolean(false)
+    @Volatile
+    private var lastUiEmitAtMs = 0L
+
+    private val flushUiRunnable = Runnable {
+        uiFlushScheduled.set(false)
+        lastUiEmitAtMs = SystemClock.elapsedRealtime()
+        val cb = listener ?: return@Runnable
+        cb(latestEvent)
+    }
 
     @Volatile
     var latestEvent: Map<String, Any?> = idleState()
@@ -137,10 +148,36 @@ object BackupSessionBus {
         }
     }
 
+    fun clearListenerIfMatches(expected: ((Map<String, Any?>) -> Unit)?) {
+        if (expected == null || listener === expected) {
+            listener = null
+        }
+    }
+
+    /**
+     * Coalesces high-frequency `"running"` progress emissions so Android's MainLooper
+     * and Flutter's EventChannel never get flooded during fast hash checks or skips,
+     * while delivering state transitions (`paused`, `completed`, `cancelled`, `error`) immediately.
+     */
     fun emit(event: Map<String, Any?>) {
+        val prevState = latestEvent["state"]
         latestEvent = event
-        val cb = listener ?: return
-        mainHandler.post { cb(event) }
+        if (listener == null) return
+
+        val newState = event["state"]
+        val isStateTransition = newState != prevState || newState != "running"
+        val now = SystemClock.elapsedRealtime()
+        val elapsedSinceLast = now - lastUiEmitAtMs
+
+        if (isStateTransition || elapsedSinceLast >= UI_EMIT_THROTTLE_MS) {
+            mainHandler.removeCallbacks(flushUiRunnable)
+            uiFlushScheduled.set(false)
+            lastUiEmitAtMs = now
+            mainHandler.post { listener?.invoke(latestEvent) }
+        } else if (uiFlushScheduled.compareAndSet(false, true)) {
+            val delayMs = (UI_EMIT_THROTTLE_MS - elapsedSinceLast).coerceIn(16L, UI_EMIT_THROTTLE_MS)
+            mainHandler.postDelayed(flushUiRunnable, delayMs)
+        }
     }
 
     fun reEmitLatest() {

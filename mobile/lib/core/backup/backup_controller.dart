@@ -36,6 +36,8 @@ class BackupController extends ChangeNotifier {
   String? _statusMessage;
   List<BackupItem> _activeRunQueue = const [];
   List<BackupItem> _resumableQueue = const [];
+  CheckpointCursor? _checkpointCursor;
+  int _completedInActiveRun = 0;
 
   BackupController({
     required this._settingsRepo,
@@ -79,9 +81,14 @@ class BackupController extends ChangeNotifier {
   String? get statusMessage => _statusMessage;
   MediaExporter get exporter => _exporter;
   List<BackupItem> get resumableQueue => _resumableQueue;
-  bool get canContinueFromStopped => !_progress.isActive && _resumableQueue.isNotEmpty;
-  int get resumableFileCount => _resumableQueue.length;
-  int get resumableTotalBytes => _resumableQueue.fold<int>(0, (sum, i) => sum + i.sizeBytes);
+  bool get canContinueFromStopped =>
+      !_progress.isActive && (_resumableQueue.isNotEmpty || _checkpointCursor != null);
+  int get resumableFileCount => _resumableQueue.isNotEmpty
+      ? _resumableQueue.length
+      : (_checkpointCursor?.remainingFiles ?? 0);
+  int get resumableTotalBytes => _resumableQueue.isNotEmpty
+      ? _resumableQueue.fold<int>(0, (sum, i) => sum + i.sizeBytes)
+      : (_checkpointCursor?.remainingBytes ?? 0);
 
   void _rebuildMediaSources() {
     if (_customInjectedSources != null) return;
@@ -128,8 +135,28 @@ class BackupController extends ChangeNotifier {
   }
 
   Future<void> init() async {
+    // 1. Immediately attach progress stream & query live service status FIRST so reopening
+    // the app while BackupForegroundService is running renders live progress immediately.
+    _progressSub?.cancel();
+    _progressSub = _bridge.progressStream().listen((event) {
+      _progress = event;
+      _updateCheckpointFromProgress(event);
+      notifyListeners();
+      if (event.state == BackupRunState.completed ||
+          event.state == BackupRunState.cancelled ||
+          event.state == BackupRunState.error) {
+        refreshSourceStats();
+      }
+    });
+    try {
+      _progress = await _bridge.getBackupStatus();
+    } catch (_) {}
+    notifyListeners();
+
+    // 2. Load persisted settings & lightweight checkpoint cursor.
     _settings = await _settingsRepo.load();
     _resumableQueue = await _settingsRepo.loadCheckpointQueue();
+    _checkpointCursor = await _settingsRepo.loadCheckpointCursor();
     _rebuildMediaSources();
 
     try {
@@ -145,26 +172,12 @@ class BackupController extends ChangeNotifier {
     try {
       _permissions = await _bridge.checkPermissions();
     } catch (_) {}
-    try {
-      _progress = await _bridge.getBackupStatus();
-    } catch (_) {}
-
-    _progressSub?.cancel();
-    _progressSub = _bridge.progressStream().listen((event) {
-      _progress = event;
-      _updateCheckpointFromProgress(event);
-      notifyListeners();
-      if (event.state == BackupRunState.completed ||
-          event.state == BackupRunState.cancelled ||
-          event.state == BackupRunState.error) {
-        refreshSourceStats();
-      }
-    });
 
     _initialized = true;
     notifyListeners();
 
-    if (_permissions.hasMedia) {
+    // Never launch a concurrent full-device MediaStore/filesystem scan while a backup is running!
+    if (_permissions.hasMedia && !_progress.isActive) {
       unawaited(refreshSourceStats());
     }
   }
@@ -275,18 +288,48 @@ class BackupController extends ChangeNotifier {
   void _updateCheckpointFromProgress(BackupProgress event) {
     if (_activeRunQueue.isEmpty) return;
     final done = (event.transferred + event.skipped).clamp(0, _activeRunQueue.length);
-    if (event.state == BackupRunState.completed && event.failed == 0 && done >= _activeRunQueue.length) {
+    if (done > _completedInActiveRun) {
+      _completedInActiveRun = done;
+    }
+
+    if (event.state == BackupRunState.completed &&
+        event.failed == 0 &&
+        _completedInActiveRun >= _activeRunQueue.length) {
       _activeRunQueue = const [];
       _resumableQueue = const [];
+      _checkpointCursor = null;
+      _completedInActiveRun = 0;
       unawaited(_settingsRepo.clearCheckpointQueue());
       return;
     }
-    if (done > 0 && done < _activeRunQueue.length) {
-      final remainingSlice = _activeRunQueue.sublist(done);
-      if (remainingSlice.length != _resumableQueue.length) {
-        _resumableQueue = List.unmodifiable(remainingSlice);
-        unawaited(_settingsRepo.saveCheckpointQueue(_resumableQueue));
+
+    // While actively running, keep tracking O(1) integer [_completedInActiveRun] with ZERO
+    // list allocations or SharedPreferences JSON serialization. Only slice and persist
+    // when the backup pauses, cancels/stops, or finishes with errors!
+    final shouldCommitCheckpoint = event.state == BackupRunState.paused ||
+        event.state == BackupRunState.cancelled ||
+        event.state == BackupRunState.error ||
+        (event.state == BackupRunState.completed && _completedInActiveRun < _activeRunQueue.length);
+
+    if (shouldCommitCheckpoint &&
+        _completedInActiveRun > 0 &&
+        _completedInActiveRun < _activeRunQueue.length) {
+      final remainingSlice = _activeRunQueue
+          .sublist(_completedInActiveRun)
+          .where((i) => !i.isSnapshot)
+          .toList();
+      _resumableQueue = List.unmodifiable(remainingSlice);
+      if (_resumableQueue.isNotEmpty) {
+        _checkpointCursor = CheckpointCursor(
+          cursorCreatedAtMs: _resumableQueue.first.createdAt.millisecondsSinceEpoch,
+          cursorFileName: _resumableQueue.first.fileName,
+          remainingFiles: _resumableQueue.length,
+          remainingBytes: _resumableQueue.fold<int>(0, (sum, i) => sum + i.sizeBytes),
+        );
+      } else {
+        _checkpointCursor = null;
       }
+      unawaited(_settingsRepo.saveCheckpointQueue(_resumableQueue));
     }
   }
 
@@ -384,6 +427,8 @@ class BackupController extends ChangeNotifier {
     _settings = await _settingsRepo.resetToDefaults();
     _activeRunQueue = const [];
     _resumableQueue = const [];
+    _checkpointCursor = null;
+    _completedInActiveRun = 0;
     _rebuildMediaSources();
     _connectionResult = null;
     notifyListeners();
@@ -480,6 +525,8 @@ class BackupController extends ChangeNotifier {
       if (planned.isEmpty) {
         _activeRunQueue = const [];
         _resumableQueue = const [];
+        _checkpointCursor = null;
+        _completedInActiveRun = 0;
         await _settingsRepo.clearCheckpointQueue();
         _progress = const BackupProgress(
           state: BackupRunState.completed,
@@ -509,9 +556,9 @@ class BackupController extends ChangeNotifier {
   }
 
   /// Continues a stopped or interrupted backup directly from the remaining checkpoint queue
-  /// without re-scanning or re-hashing files that already completed before the stop.
+  /// (or lightweight cursor for huge multi-thousand-file queues).
   Future<void> continueBackup() async {
-    if (_progress.isActive || _resumableQueue.isEmpty) return;
+    if (_progress.isActive || !canContinueFromStopped) return;
     _statusMessage = null;
 
     final dest = activeDestination;
@@ -539,7 +586,31 @@ class BackupController extends ChangeNotifier {
     }
 
     try {
-      await _launchPlannedItems(List<BackupItem>.of(_resumableQueue));
+      if (_resumableQueue.isNotEmpty) {
+        await _launchPlannedItems(List<BackupItem>.of(_resumableQueue));
+        return;
+      }
+      final cursor = _checkpointCursor;
+      if (cursor != null) {
+        _progress = const BackupProgress(
+          state: BackupRunState.scanning,
+          stage: 'scanning',
+        );
+        notifyListeners();
+        final allPlanned = await _exporter.discoverItems(limit: currentLimit);
+        final resumed = allPlanned.where(cursor.includes).toList();
+        if (resumed.isEmpty) {
+          _checkpointCursor = null;
+          await _settingsRepo.clearCheckpointQueue();
+          _progress = const BackupProgress(
+            state: BackupRunState.completed,
+            stage: 'completed',
+          );
+          notifyListeners();
+          return;
+        }
+        await _launchPlannedItems(resumed);
+      }
     } catch (e) {
       _progress = BackupProgress(
         state: BackupRunState.error,
@@ -552,7 +623,18 @@ class BackupController extends ChangeNotifier {
 
   Future<void> _launchPlannedItems(List<BackupItem> items) async {
     _activeRunQueue = List.unmodifiable(items);
+    _completedInActiveRun = 0;
     _resumableQueue = List.unmodifiable(items.where((i) => !i.isSnapshot));
+    if (_resumableQueue.isNotEmpty) {
+      _checkpointCursor = CheckpointCursor(
+        cursorCreatedAtMs: _resumableQueue.first.createdAt.millisecondsSinceEpoch,
+        cursorFileName: _resumableQueue.first.fileName,
+        remainingFiles: _resumableQueue.length,
+        remainingBytes: _resumableQueue.fold<int>(0, (sum, i) => sum + i.sizeBytes),
+      );
+    } else {
+      _checkpointCursor = null;
+    }
     await _settingsRepo.saveCheckpointQueue(_resumableQueue);
 
     final totalBytes = items.fold<int>(0, (sum, i) => sum + i.sizeBytes);
