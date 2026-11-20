@@ -4,6 +4,7 @@ import '../core/backup/backup_controller.dart';
 import '../core/backup/media_exporter.dart';
 import '../core/testing/test_keys.dart';
 import 'settings_screen.dart';
+import 'widgets/adaptive_layout.dart';
 import 'widgets/batch_limit_selector.dart';
 import 'widgets/connection_banner.dart';
 import 'widgets/error_log_sheet.dart';
@@ -120,97 +121,125 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ],
           ),
-          body: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (ctrl.connectionResult != null) ...[
-                    ConnectionBanner(result: ctrl.connectionResult!),
-                    const SizedBox(height: 12),
-                  ],
-                  if (ctrl.initialized)
-                    PermissionsAlertCard(
-                      permissions: ctrl.permissions,
-                      mode: ctrl.mode,
-                      onGrantMedia: ctrl.requestMediaPermissions,
-                      onGrantAllFiles: ctrl.openAllFilesAccessSettings,
-                    ),
-                  ModeSelector(
-                    selectedMode: ctrl.mode,
-                    enabled: !isRunning,
-                    onSelect: ctrl.setMode,
-                  ),
-                  const SizedBox(height: 16),
-                  MediaSourcesCard(
-                    sources: ctrl.mediaSources,
-                    enabledSourceIds: ctrl.settings.enabledSourceIds,
-                    sectionExpanded: ctrl.mediaSourcesExpanded,
-                    expandedNodeIds: ctrl.expandedSourceGroupIds,
-                    stats: ctrl.sourceStats,
-                    estimating: ctrl.estimatingStats,
-                    hasEstimated: ctrl.hasEstimatedStats,
-                    selectedFiles: ctrl.selectedFileCount,
-                    selectedBytes: ctrl.selectedTotalBytes,
-                    enabled: !isRunning,
-                    onSectionExpandedChanged: ctrl.setMediaSourcesExpanded,
-                    onToggleNodeExpanded: ctrl.toggleSourceGroupExpanded,
-                    onToggle: ctrl.toggleSourceNode,
-                    onRefreshEstimate: ctrl.refreshSourceStats,
-                  ),
-                  const SizedBox(height: 16),
-                  BatchLimitSelector(
-                    limitType: ctrl.limitType,
-                    valueController: _limitCtrl,
-                    focusNode: _limitFocusNode,
-                    enabled: !isRunning,
-                    onSelectType: (type) {
-                      ctrl.setLimitType(type);
-                      _limitCtrl.text = ctrl.limitValue.toString();
-                    },
-                    onChangeValue: ctrl.setLimitValue,
-                  ),
-                  const SizedBox(height: 18),
-                  _PrimaryActionButton(
-                    isRunning: isRunning,
-                    mode: ctrl.mode,
-                    onStart: ctrl.startBackup,
-                    onStop: ctrl.stopBackup,
-                  ),
-                  if (ctrl.statusMessage != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      ctrl.statusMessage!,
-                      style: TextStyle(color: cs.error, fontSize: 13),
-                    ),
-                  ],
-                  const SizedBox(height: 18),
-                  ProgressDashboard(
-                    progress: ctrl.progress,
-                    onViewErrors: () => showErrorLogSheet(context, ctrl.progress.errors),
-                  ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: withTestId(
-                      AppTestKeys.appVersionId,
-                      child: Text(
-                        'UBack v${ctrl.appVersion}',
-                        key: AppTestKeys.appVersion,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+          body: AdaptiveTwoPaneLayout(
+            portraitBuilder: (_) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ..._buildBanners(ctrl),
+                ModeSelector(
+                  selectedMode: ctrl.mode,
+                  enabled: !isRunning,
+                  onSelect: ctrl.setMode,
+                ),
+                const SizedBox(height: 16),
+                _buildSourcesCard(ctrl, isRunning),
+                const SizedBox(height: 16),
+                ..._buildControlsAndProgress(context, ctrl, isRunning, cs),
+              ],
             ),
+            leftPaneBuilder: (_) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ..._buildBanners(ctrl),
+                ModeSelector(
+                  selectedMode: ctrl.mode,
+                  enabled: !isRunning,
+                  onSelect: ctrl.setMode,
+                ),
+                const SizedBox(height: 16),
+                ..._buildControlsAndProgress(context, ctrl, isRunning, cs),
+              ],
+            ),
+            rightPaneBuilder: (_) => _buildSourcesCard(ctrl, isRunning),
           ),
         );
       },
     );
   }
+
+  List<Widget> _buildBanners(BackupController ctrl) => [
+        if (ctrl.connectionResult != null) ...[
+          ConnectionBanner(result: ctrl.connectionResult!),
+          const SizedBox(height: 12),
+        ],
+        if (ctrl.initialized)
+          PermissionsAlertCard(
+            permissions: ctrl.permissions,
+            mode: ctrl.mode,
+            onGrantMedia: ctrl.requestMediaPermissions,
+            onGrantAllFiles: ctrl.openAllFilesAccessSettings,
+          ),
+      ];
+
+  Widget _buildSourcesCard(BackupController ctrl, bool isRunning) => MediaSourcesCard(
+        sources: ctrl.mediaSources,
+        enabledSourceIds: ctrl.settings.enabledSourceIds,
+        sectionExpanded: ctrl.mediaSourcesExpanded,
+        expandedNodeIds: ctrl.expandedSourceGroupIds,
+        stats: ctrl.sourceStats,
+        estimating: ctrl.estimatingStats,
+        hasEstimated: ctrl.hasEstimatedStats,
+        selectedFiles: ctrl.selectedFileCount,
+        selectedBytes: ctrl.selectedTotalBytes,
+        enabled: !isRunning,
+        onSectionExpandedChanged: ctrl.setMediaSourcesExpanded,
+        onToggleNodeExpanded: ctrl.toggleSourceGroupExpanded,
+        onToggle: ctrl.toggleSourceNode,
+        onRefreshEstimate: ctrl.refreshSourceStats,
+      );
+
+  List<Widget> _buildControlsAndProgress(
+    BuildContext context,
+    BackupController ctrl,
+    bool isRunning,
+    ColorScheme cs,
+  ) =>
+      [
+        BatchLimitSelector(
+          limitType: ctrl.limitType,
+          valueController: _limitCtrl,
+          focusNode: _limitFocusNode,
+          enabled: !isRunning,
+          onSelectType: (type) {
+            ctrl.setLimitType(type);
+            _limitCtrl.text = ctrl.limitValue.toString();
+          },
+          onChangeValue: ctrl.setLimitValue,
+        ),
+        const SizedBox(height: 18),
+        _PrimaryActionButton(
+          isRunning: isRunning,
+          mode: ctrl.mode,
+          onStart: ctrl.startBackup,
+          onStop: ctrl.stopBackup,
+        ),
+        if (ctrl.statusMessage != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            ctrl.statusMessage!,
+            style: TextStyle(color: cs.error, fontSize: 13),
+          ),
+        ],
+        const SizedBox(height: 18),
+        ProgressDashboard(
+          progress: ctrl.progress,
+          onViewErrors: () => showErrorLogSheet(context, ctrl.progress.errors),
+        ),
+        const SizedBox(height: 16),
+        Center(
+          child: withTestId(
+            AppTestKeys.appVersionId,
+            child: Text(
+              ctrl.appVersionLabel,
+              key: AppTestKeys.appVersion,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+            ),
+          ),
+        ),
+      ];
 }
 
 class _PrimaryActionButton extends StatelessWidget {

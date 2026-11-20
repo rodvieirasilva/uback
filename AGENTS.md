@@ -26,7 +26,7 @@ This repository follows clean, modular, SOLID engineering practices.
    - Every interactive widget and status counter must expose a centralized key from `mobile/lib/core/testing/test_keys.dart` wrapped with `withTestId(...)` (`Semantics(identifier: ...)` + `ValueKey`).
 6. **Tooling, Verification & Releases**:
    - Use `mise` (`mise.toml`) for all tool versions and tasks; keep Java, Flutter, Dart, and Maven dependencies up to date.
-   - Support both Light and Dark Material 3 themes following `ThemeMode.system` (`mobile/lib/ui/theme/app_theme.dart`).
+   - Support both Light and Dark Material 3 themes following `ThemeMode.system` (`mobile/lib/ui/theme/app_theme.dart`) and hinge-aware two-pane adaptive layouts for landscape & foldable dual-screen devices (`mobile/lib/ui/widgets/adaptive_layout.dart`).
    - Follow [docs/RELEASE.md](docs/RELEASE.md) when cutting a release (bump `mobile/pubspec.yaml`, run `mise run release-check`, refresh prints via `mise run screenshots`).
    - Before committing or finishing a change, run in order:
      - `mise run analyze` (zero issues)

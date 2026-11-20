@@ -3,16 +3,16 @@
 Follow this checklist whenever cutting a new version of UBack Mobile.
 
 ## 1. Bump the Version
-Update `version:` in [mobile/pubspec.yaml](../mobile/pubspec.yaml) using Semantic Versioning + incrementing Android build number:
+Update `version:` in [mobile/pubspec.yaml](../mobile/pubspec.yaml) using plain Semantic Versioning (no `+N` build suffix — Android's numeric `versionCode` is derived automatically from `major.minor.patch` in `build.gradle.kts`):
 ```yaml
-version: 1.1.0+2
+version: 1.2.2
 ```
-- The version label displayed in the app UI (`UBack vX.Y.Z+N`) reads directly from Android's `PackageInfo` (and compile-time `UBACK_APP_VERSION` parsed by [scripts/parse_config.py](../scripts/parse_config.py)).
+- The version label displayed in the app UI (`UBack vX.Y.Z • YYYY-MM-DD HH:MM UTC • <short-sha>`) strips any `+N` suffix and automatically injects the UTC commit datetime and short Git SHA via [scripts/parse_config.py](../scripts/parse_config.py).
 
 ## 2. Run Full Verification Suite
 ```bash
 mise run analyze
-mise run test
+mise run coverage
 mise run test-e2e
 ```
 All static checks, unit/widget tests, and Android Emulator E2E tests (including real SMB2 SHA-256 read-back verification and Crop Mode cleanup) must pass with zero errors.

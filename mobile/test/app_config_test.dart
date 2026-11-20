@@ -116,4 +116,23 @@ void main() {
     expect(afterReset.customFolders, isEmpty);
     expect(afterReset.enabledSourceIds, defaultEnabledMediaSourceIds);
   });
+
+  test('CompileTimeDefaults.formatVersionLabel strips +buildNumber and appends datetime and short sha', () {
+    expect(
+      CompileTimeDefaults.formatVersionLabel(
+        '1.2.2+9',
+        buildDateOverride: '2026-11-20 10:33 UTC',
+        gitShaOverride: '23bb0c1',
+      ),
+      'UBack v1.2.2 • 2026-11-20 10:33 UTC • 23bb0c1',
+    );
+    expect(
+      CompileTimeDefaults.formatVersionLabel(
+        '1.2.2',
+        buildDateOverride: '',
+        gitShaOverride: '',
+      ),
+      'UBack v1.2.2',
+    );
+  });
 }

@@ -5,6 +5,7 @@ import '../core/backup/backup_controller.dart';
 import '../core/config/app_config.dart';
 import '../core/testing/test_keys.dart';
 import '../core/utils/path_sanitizer.dart';
+import 'widgets/adaptive_layout.dart';
 import 'widgets/connection_banner.dart';
 import 'widgets/custom_folders_section.dart';
 import 'widgets/settings_sources_section.dart';
@@ -121,207 +122,232 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
+          body: AdaptiveTwoPaneLayout(
+            portraitBuilder: (ctx) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'BACKUP DESTINATION',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                        letterSpacing: 1.1,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                withTestId(
-                  AppTestKeys.settingsDestinationTypeId,
-                  child: DropdownButtonFormField<String>(
-                    key: AppTestKeys.settingsDestinationType,
-                    initialValue: _destinationType,
-                    decoration: const InputDecoration(labelText: 'Destination Type'),
-                    items: [
-                      for (final dest in ctrl.availableDestinations)
-                        DropdownMenuItem<String>(
-                          value: dest.id,
-                          child: Text(dest.displayName),
-                        ),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) setState(() => _destinationType = val);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  'SMB / NAS CONNECTION',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                        letterSpacing: 1.1,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: withTestId(
-                        AppTestKeys.settingsHostId,
-                        child: TextField(
-                          key: AppTestKeys.settingsHost,
-                          controller: _hostCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'SMB Host / IP',
-                            hintText: '192.168.1.100',
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: withTestId(
-                        AppTestKeys.settingsPortId,
-                        child: TextField(
-                          key: AppTestKeys.settingsPort,
-                          controller: _portCtrl,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                          decoration: const InputDecoration(labelText: 'Port', hintText: '445'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                withTestId(
-                  AppTestKeys.settingsShareId,
-                  child: TextField(
-                    key: AppTestKeys.settingsShare,
-                    controller: _shareCtrl,
-                    decoration: const InputDecoration(labelText: 'Share Name', hintText: 'safe'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                withTestId(
-                  AppTestKeys.settingsBasePathId,
-                  child: TextField(
-                    key: AppTestKeys.settingsBasePath,
-                    controller: _basePathCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Base Path inside Share',
-                      hintText: 'local/phone',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                withTestId(
-                  AppTestKeys.settingsUsernameId,
-                  child: TextField(
-                    key: AppTestKeys.settingsUsername,
-                    controller: _usernameCtrl,
-                    decoration: const InputDecoration(labelText: 'Username'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                withTestId(
-                  AppTestKeys.settingsPasswordId,
-                  child: TextField(
-                    key: AppTestKeys.settingsPassword,
-                    controller: _passwordCtrl,
-                    obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                withTestId(
-                  AppTestKeys.settingsDomainId,
-                  child: TextField(
-                    key: AppTestKeys.settingsDomain,
-                    controller: _domainCtrl,
-                    decoration: const InputDecoration(labelText: 'Domain / Workgroup (optional)'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                withTestId(
-                  AppTestKeys.settingsDeviceOverrideId,
-                  child: TextField(
-                    key: AppTestKeys.settingsDeviceOverride,
-                    controller: _deviceOverrideCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Device Folder Override (optional)',
-                      helperText: 'Auto-detected: "${ctrl.detectedDeviceName}" -> $autoDevice',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: withTestId(
-                        AppTestKeys.settingsTestConnectionId,
-                        child: OutlinedButton.icon(
-                          key: AppTestKeys.settingsTestConnection,
-                          onPressed: ctrl.testingConnection
-                              ? null
-                              : () => ctrl.testConnection(_collectSettings()),
-                          icon: ctrl.testingConnection
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.wifi_tethering),
-                          label: const Text('Test Connection'),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    withTestId(
-                      AppTestKeys.settingsResetDefaultsId,
-                      child: OutlinedButton(
-                        key: AppTestKeys.settingsResetDefaults,
-                        onPressed: _resetDefaults,
-                        child: const Text('Reset Defaults'),
-                      ),
-                    ),
-                  ],
-                ),
-                if (ctrl.connectionResult != null) ...[
-                  const SizedBox(height: 12),
-                  ConnectionBanner(result: ctrl.connectionResult!),
-                ],
+                ..._buildDestinationAndConnection(ctx, ctrl, autoDevice),
                 const SizedBox(height: 24),
-                CustomFoldersSection(
-                  folders: ctrl.settings.customFolders,
-                  onBrowse: ctrl.pickCustomFolder,
-                  onAdd: (path, name) => ctrl.addCustomFolder(relativePath: path, displayName: name),
-                  onRemove: ctrl.removeCustomFolder,
-                ),
-                const SizedBox(height: 24),
-                SettingsPermissionsSection(
-                  hasAllFiles: ctrl.permissions.hasAllFiles,
-                  onOpenAllFilesAccess: ctrl.openAllFilesAccessSettings,
-                ),
-                const SizedBox(height: 20),
-                Center(
-                  child: Text(
-                    'UBack v${ctrl.appVersion}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ),
+                ..._buildCustomFoldersAndPermissions(ctx, ctrl),
               ],
+            ),
+            leftPaneBuilder: (ctx) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: _buildDestinationAndConnection(ctx, ctrl, autoDevice),
+            ),
+            rightPaneBuilder: (ctx) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: _buildCustomFoldersAndPermissions(ctx, ctrl),
             ),
           ),
         );
       },
     );
   }
+
+  List<Widget> _buildDestinationAndConnection(
+    BuildContext context,
+    BackupController ctrl,
+    String autoDevice,
+  ) =>
+      [
+        Text(
+          'BACKUP DESTINATION',
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                letterSpacing: 1.1,
+              ),
+        ),
+        const SizedBox(height: 8),
+        withTestId(
+          AppTestKeys.settingsDestinationTypeId,
+          child: DropdownButtonFormField<String>(
+            key: AppTestKeys.settingsDestinationType,
+            initialValue: _destinationType,
+            decoration: const InputDecoration(labelText: 'Destination Type'),
+            items: [
+              for (final dest in ctrl.availableDestinations)
+                DropdownMenuItem<String>(
+                  value: dest.id,
+                  child: Text(dest.displayName),
+                ),
+            ],
+            onChanged: (val) {
+              if (val != null) setState(() => _destinationType = val);
+            },
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'SMB / NAS CONNECTION',
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                letterSpacing: 1.1,
+              ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: withTestId(
+                AppTestKeys.settingsHostId,
+                child: TextField(
+                  key: AppTestKeys.settingsHost,
+                  controller: _hostCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'SMB Host / IP',
+                    hintText: '192.168.1.100',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: withTestId(
+                AppTestKeys.settingsPortId,
+                child: TextField(
+                  key: AppTestKeys.settingsPort,
+                  controller: _portCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(labelText: 'Port', hintText: '445'),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        withTestId(
+          AppTestKeys.settingsShareId,
+          child: TextField(
+            key: AppTestKeys.settingsShare,
+            controller: _shareCtrl,
+            decoration: const InputDecoration(labelText: 'Share Name', hintText: 'safe'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        withTestId(
+          AppTestKeys.settingsBasePathId,
+          child: TextField(
+            key: AppTestKeys.settingsBasePath,
+            controller: _basePathCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Base Path inside Share',
+              hintText: 'local/phone',
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        withTestId(
+          AppTestKeys.settingsUsernameId,
+          child: TextField(
+            key: AppTestKeys.settingsUsername,
+            controller: _usernameCtrl,
+            decoration: const InputDecoration(labelText: 'Username'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        withTestId(
+          AppTestKeys.settingsPasswordId,
+          child: TextField(
+            key: AppTestKeys.settingsPassword,
+            controller: _passwordCtrl,
+            obscureText: _obscurePassword,
+            decoration: InputDecoration(
+              labelText: 'Password',
+              suffixIcon: IconButton(
+                icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        withTestId(
+          AppTestKeys.settingsDomainId,
+          child: TextField(
+            key: AppTestKeys.settingsDomain,
+            controller: _domainCtrl,
+            decoration: const InputDecoration(labelText: 'Domain / Workgroup (optional)'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        withTestId(
+          AppTestKeys.settingsDeviceOverrideId,
+          child: TextField(
+            key: AppTestKeys.settingsDeviceOverride,
+            controller: _deviceOverrideCtrl,
+            decoration: InputDecoration(
+              labelText: 'Device Folder Override (optional)',
+              helperText: 'Auto-detected: "${ctrl.detectedDeviceName}" -> $autoDevice',
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: withTestId(
+                AppTestKeys.settingsTestConnectionId,
+                child: OutlinedButton.icon(
+                  key: AppTestKeys.settingsTestConnection,
+                  onPressed: ctrl.testingConnection
+                      ? null
+                      : () => ctrl.testConnection(_collectSettings()),
+                  icon: ctrl.testingConnection
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.wifi_tethering),
+                  label: const Text('Test Connection', maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            withTestId(
+              AppTestKeys.settingsResetDefaultsId,
+              child: OutlinedButton(
+                key: AppTestKeys.settingsResetDefaults,
+                onPressed: _resetDefaults,
+                child: const Text('Reset Defaults', maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ],
+        ),
+        if (ctrl.connectionResult != null) ...[
+          const SizedBox(height: 12),
+          ConnectionBanner(result: ctrl.connectionResult!),
+        ],
+      ];
+
+  List<Widget> _buildCustomFoldersAndPermissions(
+    BuildContext context,
+    BackupController ctrl,
+  ) =>
+      [
+        CustomFoldersSection(
+          folders: ctrl.settings.customFolders,
+          onBrowse: ctrl.pickCustomFolder,
+          onAdd: (path, name) => ctrl.addCustomFolder(relativePath: path, displayName: name),
+          onRemove: ctrl.removeCustomFolder,
+        ),
+        const SizedBox(height: 24),
+        SettingsPermissionsSection(
+          hasAllFiles: ctrl.permissions.hasAllFiles,
+          onOpenAllFilesAccess: ctrl.openAllFilesAccessSettings,
+        ),
+        const SizedBox(height: 20),
+        Center(
+          child: Text(
+            ctrl.appVersionLabel,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ),
+      ];
 }

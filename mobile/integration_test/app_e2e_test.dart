@@ -85,6 +85,9 @@ void main() {
     expect(find.textContaining('DESTINATION (OLDEST FIRST'), findsNothing);
     expect(find.byKey(AppTestKeys.appLogo), findsOneWidget);
     expect(find.byKey(AppTestKeys.appVersion), findsOneWidget);
+    final versionText = tester.widget<Text>(find.byKey(AppTestKeys.appVersion)).data ?? '';
+    expect(versionText, isNot(contains('+')));
+    expect(versionText, contains(' • '));
     expect(find.textContaining('PHASE'), findsNothing);
     expect(find.textContaining('Phase'), findsNothing);
     final fileImages = find.byWidgetPredicate((w) => w is Image && w.image is FileImage);

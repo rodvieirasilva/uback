@@ -261,6 +261,10 @@ start_smb_server
 seed_emulator_media
 seed_emulator_snapshots
 
+APP_VERSION="$(python3 -c "from pathlib import Path; import sys; sys.path.insert(0, '$REPO_ROOT/scripts'); import parse_config; print(parse_config.read_pubspec_version(Path('$REPO_ROOT')))")"
+BUILD_DATE="$(python3 -c "from pathlib import Path; import sys; sys.path.insert(0, '$REPO_ROOT/scripts'); import parse_config; print(parse_config.read_build_date(Path('$REPO_ROOT')))")"
+GIT_SHA="$(python3 -c "from pathlib import Path; import sys; sys.path.insert(0, '$REPO_ROOT/scripts'); import parse_config; print(parse_config.read_git_sha(Path('$REPO_ROOT')))")"
+
 DART_DEFINES=(
   "--dart-define=UBACK_SMB_HOST=10.0.2.2"
   "--dart-define=UBACK_SMB_PORT=$SMB_PORT"
@@ -270,6 +274,9 @@ DART_DEFINES=(
   "--dart-define=UBACK_SMB_PASSWORD=$SMB_PASS"
   "--dart-define=UBACK_SMB_DOMAIN="
   "--dart-define=UBACK_E2E_DEVICE_OVERRIDE=rodrigo"
+  "--dart-define=UBACK_APP_VERSION=$APP_VERSION"
+  "--dart-define=UBACK_BUILD_DATE=$BUILD_DATE"
+  "--dart-define=UBACK_GIT_SHA=$GIT_SHA"
 )
 
 cd "$REPO_ROOT/mobile"

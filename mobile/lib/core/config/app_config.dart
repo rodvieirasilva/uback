@@ -22,7 +22,28 @@ class CompileTimeDefaults {
   static const String e2eDeviceOverride =
       String.fromEnvironment('UBACK_E2E_DEVICE_OVERRIDE', defaultValue: '');
   static const String appVersion =
-      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.1+4');
+      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.2');
+  static const String buildDate =
+      String.fromEnvironment('UBACK_BUILD_DATE', defaultValue: '');
+  static const String gitSha =
+      String.fromEnvironment('UBACK_GIT_SHA', defaultValue: '');
+
+  /// Formats the user-facing version footer without any `+buildNumber` suffix,
+  /// appending the release date and short commit SHA when available:
+  /// e.g. `UBack v1.2.2 • 2026-11-20 • 23bb0c1`.
+  static String formatVersionLabel(
+    String rawVersion, {
+    String? buildDateOverride,
+    String? gitShaOverride,
+  }) {
+    final cleanVersion = rawVersion.split('+').first.trim();
+    final parts = <String>['UBack v${cleanVersion.isEmpty ? '1.0.0' : cleanVersion}'];
+    final date = (buildDateOverride ?? buildDate).trim();
+    final sha = (gitShaOverride ?? gitSha).trim();
+    if (date.isNotEmpty) parts.add(date);
+    if (sha.isNotEmpty) parts.add(sha);
+    return parts.join(' • ');
+  }
 
   static AppSettings toSettings() {
     return AppSettings(
