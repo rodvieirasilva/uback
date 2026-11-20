@@ -16,7 +16,7 @@ class _NoopBridge implements NativeBackupBridge {
   }) async =>
       const [];
   @override
-  Future<String> getAppVersion() async => '1.2.1+4';
+  Future<String> getAppVersion() async => '1.2.2';
   @override
   Future<BackupProgress> getBackupStatus() async => const BackupProgress();
   @override

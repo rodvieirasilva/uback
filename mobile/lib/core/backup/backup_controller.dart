@@ -57,6 +57,7 @@ class BackupController extends ChangeNotifier {
   List<MediaSource> get mediaSources => _mediaSources;
   String get detectedDeviceName => _detectedDeviceName;
   String get appVersion => _appVersion;
+  String get appVersionLabel => CompileTimeDefaults.formatVersionLabel(_appVersion);
   String get resolvedDeviceFolder => _settings.resolvedDeviceFolder(_detectedDeviceName);
   PermissionState get permissions => _permissions;
   Map<String, MediaSourceStats> get sourceStats => _sourceStats;

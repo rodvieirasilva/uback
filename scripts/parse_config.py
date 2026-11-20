@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Parse local config.toml (if present) into mobile/dart_defines.json for Flutter builds."""
+"""Parse local config.toml (if present) and build metadata into mobile/dart_defines.json."""
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tomllib
 
@@ -12,11 +14,40 @@ import tomllib
 def read_pubspec_version(repo_root: Path) -> str:
     pubspec = repo_root / "mobile" / "pubspec.yaml"
     if not pubspec.exists():
-        return "1.0.0+1"
+        return "1.0.0"
     for line in pubspec.read_text(encoding="utf-8").splitlines():
         if line.startswith("version:"):
-            return line.split(":", 1)[1].strip()
-    return "1.0.0+1"
+            return line.split(":", 1)[1].strip().split("+", 1)[0]
+    return "1.0.0"
+
+
+def read_git_sha(repo_root: Path) -> str:
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=repo_root,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        return out
+    except Exception:
+        return ""
+
+
+def read_build_date(repo_root: Path) -> str:
+    try:
+        out = subprocess.check_output(
+            ["git", "log", "-1", "--format=%cI"],
+            cwd=repo_root,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if out:
+            dt = datetime.fromisoformat(out).astimezone(timezone.utc)
+            return dt.strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        pass
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def main() -> int:
@@ -53,6 +84,8 @@ def main() -> int:
         "UBACK_SMB_PASSWORD": str(smb.get("password", "")),
         "UBACK_SMB_DOMAIN": str(smb.get("domain", "")),
         "UBACK_APP_VERSION": read_pubspec_version(repo_root),
+        "UBACK_BUILD_DATE": read_build_date(repo_root),
+        "UBACK_GIT_SHA": read_git_sha(repo_root),
     }
 
     with out_path.open("w", encoding="utf-8") as f:

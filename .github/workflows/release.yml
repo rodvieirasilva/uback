@@ -50,7 +50,7 @@ jobs:
         run: |
           (cd mobile && mise exec -- flutter pub get)
           mise run analyze
-          mise run test
+          mise run coverage
 
       - name: Ensure Android SDK 36 & licenses
         run: |

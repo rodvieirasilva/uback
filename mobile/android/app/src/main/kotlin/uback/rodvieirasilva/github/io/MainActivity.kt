@@ -59,14 +59,8 @@ class MainActivity : FlutterActivity() {
                 val info = runCatching {
                     packageManager.getPackageInfo(packageName, 0)
                 }.getOrNull()
-                val versionName = info?.versionName ?: "1.0.0"
-                val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    info?.longVersionCode ?: 1L
-                } else {
-                    @Suppress("DEPRECATION")
-                    (info?.versionCode ?: 1).toLong()
-                }
-                result.success("$versionName+$versionCode")
+                val versionName = (info?.versionName ?: "1.0.0").substringBefore('+')
+                result.success(versionName)
             }
 
             "checkPermissions" -> {

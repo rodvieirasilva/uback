@@ -8,6 +8,14 @@ plugins {
 val appPackageId: String =
     (project.findProperty("uback.appId") as String?) ?: "uback.rodvieirasilva.github.io"
 
+fun computeVersionCode(versionName: String): Int {
+    val parts = versionName.substringBefore('+').substringBefore('-').split('.')
+    val major = parts.getOrNull(0)?.toIntOrNull() ?: 1
+    val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+    val patch = parts.getOrNull(2)?.toIntOrNull() ?: 0
+    return (major * 10000) + (minor * 100) + patch
+}
+
 android {
     namespace = "uback.rodvieirasilva.github.io"
     compileSdk = flutter.compileSdkVersion
@@ -22,8 +30,8 @@ android {
         applicationId = appPackageId
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionCode = computeVersionCode(flutter.versionName)
+        versionName = flutter.versionName.substringBefore('+')
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

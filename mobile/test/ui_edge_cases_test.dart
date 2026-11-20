@@ -31,7 +31,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Test Phone';
   @override
-  Future<String> getAppVersion() async => '1.2.1+4';
+  Future<String> getAppVersion() async => '1.2.2';
   @override
   Future<PermissionState> checkPermissions() async => permissions;
   @override
@@ -263,6 +263,9 @@ void main() {
     expect(controller.settings.host, '10.0.0.55');
 
     await tester.tap(find.byKey(AppTestKeys.openSettings));
+    await tester.pumpAndSettle();
+    // Wait for the "Settings saved" SnackBar to clear so it does not overlay bottom buttons in landscape.
+    await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(AppTestKeys.settingsResetDefaults));
     await tester.tap(find.byKey(AppTestKeys.settingsResetDefaults));

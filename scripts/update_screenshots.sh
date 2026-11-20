@@ -22,10 +22,12 @@ cleanup() {
 trap cleanup EXIT
 
 APP_VERSION="$(python3 -c "from pathlib import Path; import sys; sys.path.insert(0, '$REPO_ROOT/scripts'); import parse_config; print(parse_config.read_pubspec_version(Path('$REPO_ROOT')))")"
+BUILD_DATE="$(python3 -c "from pathlib import Path; import sys; sys.path.insert(0, '$REPO_ROOT/scripts'); import parse_config; print(parse_config.read_build_date(Path('$REPO_ROOT')))")"
+GIT_SHA="$(python3 -c "from pathlib import Path; import sys; sys.path.insert(0, '$REPO_ROOT/scripts'); import parse_config; print(parse_config.read_git_sha(Path('$REPO_ROOT')))")"
 
 # Build APK BEFORE starting emulator so Gradle CPU load doesn't trigger System UI ANR.
 if [[ "${SKIP_BUILD:-0}" != "1" || ! -f "$APK_PATH" ]]; then
-  echo "==> Building screenshot APK (v$APP_VERSION) with clean demo SMB defaults..."
+  echo "==> Building screenshot APK (v$APP_VERSION • $BUILD_DATE • $GIT_SHA) with clean demo SMB defaults..."
   cd "$REPO_ROOT/mobile"
   flutter build apk --debug --target-platform=android-x64 \
     --dart-define=UBACK_SMB_HOST=192.168.1.100 \
@@ -35,7 +37,9 @@ if [[ "${SKIP_BUILD:-0}" != "1" || ! -f "$APK_PATH" ]]; then
     --dart-define=UBACK_SMB_USERNAME=backup-user \
     --dart-define=UBACK_SMB_PASSWORD=demo-pass \
     --dart-define=UBACK_E2E_DEVICE_OVERRIDE=my-phone \
-    --dart-define=UBACK_APP_VERSION="$APP_VERSION"
+    --dart-define=UBACK_APP_VERSION="$APP_VERSION" \
+    --dart-define=UBACK_BUILD_DATE="$BUILD_DATE" \
+    --dart-define=UBACK_GIT_SHA="$GIT_SHA"
 fi
 
 EMU_SERIAL="$(adb devices | awk 'NR>1 && $2=="device" && $1 ~ /^emulator-/ {print $1; exit}')"
