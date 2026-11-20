@@ -73,7 +73,7 @@ class _StubBridge implements NativeBackupBridge {
         ),
       ];
   @override
-  Future<String> getAppVersion() async => '1.2.4';
+  Future<String> getAppVersion() async => '1.2.5';
   @override
   Future<BackupProgress> getBackupStatus() async => const BackupProgress();
   @override

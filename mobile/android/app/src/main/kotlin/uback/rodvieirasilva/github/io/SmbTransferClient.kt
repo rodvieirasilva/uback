@@ -175,6 +175,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         createdAtMs: Long,
         onStage: (String) -> Unit,
         onBytesProgress: (Long) -> Unit,
+        onFileBytesProgress: (stage: String, processedBytes: Long, fileTotalBytes: Long) -> Unit = { _, _, _ -> },
         isCancelled: () -> Boolean,
         waitIfPaused: () -> Unit = {},
         maxAttempts: Int = 3,
@@ -185,7 +186,14 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
 
         waitIfPaused()
         onStage("hashing")
-        val localSha256 = computeLocalSha256(localFile, isCancelled, waitIfPaused)
+        onFileBytesProgress("hashing", 0L, localSize)
+        val localSha256 = computeLocalSha256(
+            localFile = localFile,
+            totalSize = localSize,
+            onFileBytesProgress = onFileBytesProgress,
+            isCancelled = isCancelled,
+            waitIfPaused = waitIfPaused,
+        )
         val normDir = normalizeSmbPath(remoteDirRel)
 
         var lastError: Throwable? = null
@@ -204,6 +212,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                     localSize = localSize,
                     localSha256 = localSha256,
                     onStage = onStage,
+                    onFileBytesProgress = onFileBytesProgress,
                     isCancelled = isCancelled,
                     waitIfPaused = waitIfPaused,
                 )
@@ -215,6 +224,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                         "Skipped $fileName — SHA-256 already matched remote ${targetName.fileName} (0 bytes copied)",
                     )
                     onBytesProgress(localSize)
+                    onFileBytesProgress("verified", localSize, localSize)
                     return TransferResult(
                         outcome = TransferOutcome.SKIPPED_ALREADY_VERIFIED,
                         remotePath = targetPath.replace('\\', '/'),
@@ -223,20 +233,54 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                     )
                 }
 
-                // Step 3: Atomic upload to `.uback.tmp`
+                // Step 3: Atomic upload to `.uback.tmp` (with byte-offset resume if a partial `.uback.tmp` exists!)
                 val tempPath = "$targetPath.uback.tmp"
-                if (safeFileExists(share, tempPath)) {
+                val existingTempSize = if (safeFileExists(share, tempPath)) {
+                    runCatching { getRemoteFileSize(share, tempPath) }.getOrDefault(0L)
+                } else {
+                    0L
+                }
+                if (existingTempSize > localSize) {
                     runCatching { share.rm(tempPath) }
                 }
+                val resumeOffset = if (existingTempSize in 1L..localSize) existingTempSize else 0L
 
                 waitIfPaused()
-                onStage("uploading")
-                android.util.Log.i("UBack", "Uploading $fileName -> $tempPath ($localSize bytes)")
-                uploadStream(share, localFile, tempPath, onBytesProgress, isCancelled, waitIfPaused)
+                if (resumeOffset < localSize) {
+                    onStage("uploading")
+                    onFileBytesProgress("uploading", resumeOffset, localSize)
+                    if (resumeOffset > 0L) {
+                        onBytesProgress(resumeOffset)
+                        android.util.Log.i(
+                            "UBack",
+                            "Resuming $fileName -> $tempPath from byte $resumeOffset / $localSize",
+                        )
+                    } else {
+                        android.util.Log.i("UBack", "Uploading $fileName -> $tempPath ($localSize bytes)")
+                    }
+                    uploadStream(
+                        share = share,
+                        localFile = localFile,
+                        localSize = localSize,
+                        remotePath = tempPath,
+                        resumeOffset = resumeOffset,
+                        onBytesProgress = onBytesProgress,
+                        onFileBytesProgress = onFileBytesProgress,
+                        isCancelled = isCancelled,
+                        waitIfPaused = waitIfPaused,
+                    )
+                } else {
+                    onBytesProgress(localSize)
+                    android.util.Log.i(
+                        "UBack",
+                        "Found complete partial $tempPath ($localSize bytes); proceeding directly to SHA-256 verification",
+                    )
+                }
 
                 // Step 4: Mandatory full SHA-256 read-back verification (ALWAYS ON)
                 waitIfPaused()
                 onStage("verifying")
+                onFileBytesProgress("verifying", 0L, localSize)
                 android.util.Log.i("UBack", "Checking remote size for $tempPath")
                 val remoteTempSize = getRemoteFileSize(share, tempPath)
                 if (remoteTempSize != localSize) {
@@ -247,7 +291,14 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                 }
 
                 android.util.Log.i("UBack", "Reading back SHA-256 for $tempPath ($remoteTempSize bytes)")
-                val remoteSha256 = computeRemoteSha256(share, tempPath, remoteTempSize, isCancelled, waitIfPaused)
+                val remoteSha256 = computeRemoteSha256(
+                    share = share,
+                    remotePath = tempPath,
+                    expectedSize = remoteTempSize,
+                    onFileBytesProgress = onFileBytesProgress,
+                    isCancelled = isCancelled,
+                    waitIfPaused = waitIfPaused,
+                )
                 if (!remoteSha256.equals(localSha256, ignoreCase = true)) {
                     runCatching { share.rm(tempPath) }
                     throw IllegalStateException(
@@ -347,6 +398,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         localSize: Long,
         localSha256: String,
         onStage: (String) -> Unit,
+        onFileBytesProgress: (stage: String, processedBytes: Long, fileTotalBytes: Long) -> Unit,
         isCancelled: () -> Boolean,
         waitIfPaused: () -> Unit,
     ): TargetResolution {
@@ -362,7 +414,14 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
             val existingSize = origEntry?.second?.sizeBytes ?: getRemoteFileSize(share, candidatePath)
             if (existingSize == localSize) {
                 val existingHash = origEntry?.second?.sha256
-                    ?: computeRemoteSha256(share, candidatePath, existingSize, isCancelled, waitIfPaused).also {
+                    ?: computeRemoteSha256(
+                        share = share,
+                        remotePath = candidatePath,
+                        expectedSize = existingSize,
+                        onFileBytesProgress = onFileBytesProgress,
+                        isCancelled = isCancelled,
+                        waitIfPaused = waitIfPaused,
+                    ).also {
                         recordVerifiedRemoteFile(normDir, originalFileName, existingSize, it)
                     }
                 if (existingHash.equals(localSha256, ignoreCase = true)) {
@@ -383,7 +442,14 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                 val disambSize = disambEntry?.second?.sizeBytes ?: getRemoteFileSize(share, disambPath)
                 if (disambSize == localSize) {
                     val disambHash = disambEntry?.second?.sha256
-                        ?: computeRemoteSha256(share, disambPath, disambSize, isCancelled, waitIfPaused).also {
+                        ?: computeRemoteSha256(
+                            share = share,
+                            remotePath = disambPath,
+                            expectedSize = disambSize,
+                            onFileBytesProgress = onFileBytesProgress,
+                            isCancelled = isCancelled,
+                            waitIfPaused = waitIfPaused,
+                        ).also {
                             recordVerifiedRemoteFile(normDir, disambiguated, disambSize, it)
                         }
                     if (disambHash.equals(localSha256, ignoreCase = true)) {
@@ -403,6 +469,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
             localSha256 = localSha256,
             skipLowerNames = checkedNames,
             onStage = onStage,
+            onFileBytesProgress = onFileBytesProgress,
             isCancelled = isCancelled,
             waitIfPaused = waitIfPaused,
         )
@@ -424,6 +491,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         localSha256: String,
         skipLowerNames: Set<String>,
         onStage: (String) -> Unit,
+        onFileBytesProgress: (stage: String, processedBytes: Long, fileTotalBytes: Long) -> Unit,
         isCancelled: () -> Boolean,
         waitIfPaused: () -> Unit,
     ): String? {
@@ -437,7 +505,14 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
             onStage("verifying")
             val remotePath = joinSmbPath(normDir, actualName)
             val hash = cached.sha256 ?: runCatching {
-                computeRemoteSha256(share, remotePath, localSize, isCancelled, waitIfPaused)
+                computeRemoteSha256(
+                    share = share,
+                    remotePath = remotePath,
+                    expectedSize = localSize,
+                    onFileBytesProgress = onFileBytesProgress,
+                    isCancelled = isCancelled,
+                    waitIfPaused = waitIfPaused,
+                )
             }.getOrNull()?.also { cached.sha256 = it } ?: continue
             if (hash.equals(localSha256, ignoreCase = true)) {
                 return actualName
@@ -449,41 +524,71 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
     private fun uploadStream(
         share: DiskShare,
         localFile: File,
+        localSize: Long,
         remotePath: String,
+        resumeOffset: Long = 0L,
         onBytesProgress: (Long) -> Unit,
+        onFileBytesProgress: (stage: String, processedBytes: Long, fileTotalBytes: Long) -> Unit,
         isCancelled: () -> Boolean,
         waitIfPaused: () -> Unit,
     ) {
         val buffer = ByteArray(BUFFER_SIZE)
-        var uploaded = 0L
+        var uploaded = resumeOffset
+        var lastEmitMs = 0L
+        val disposition = if (resumeOffset > 0L) {
+            SMB2CreateDisposition.FILE_OPEN_IF
+        } else {
+            SMB2CreateDisposition.FILE_OVERWRITE_IF
+        }
 
         share.openFile(
             remotePath,
             EnumSet.of(AccessMask.GENERIC_WRITE, AccessMask.DELETE),
             EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL),
             SMB2ShareAccess.ALL,
-            SMB2CreateDisposition.FILE_OVERWRITE_IF,
+            disposition,
             EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE),
         ).use { remoteFile ->
-            remoteFile.outputStream.use { out ->
-                FileInputStream(localFile).use { input ->
-                    while (true) {
-                        waitIfPaused()
-                        if (isCancelled()) {
-                            runCatching { remoteFile.deleteOnClose() }
-                            throw InterruptedException("Backup cancelled during upload")
-                        }
-                        val read = input.read(buffer)
-                        if (read <= 0) break
-                        touchActivity()
-                        out.write(buffer, 0, read)
-                        touchActivity()
-                        uploaded += read
-                        onBytesProgress(uploaded)
-                    }
-                    out.flush()
-                    touchActivity()
+            FileInputStream(localFile).use { input ->
+                if (resumeOffset > 0L) {
+                    skipLocalFully(input, resumeOffset)
                 }
+                while (true) {
+                    waitIfPaused()
+                    if (isCancelled()) {
+                        // Keep partial `.uback.tmp` intact on NAS so "Continue From Last Stop"
+                        // can resume this large file from [uploaded] bytes!
+                        throw InterruptedException("Backup cancelled during upload")
+                    }
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    touchActivity()
+                    remoteFile.write(buffer, uploaded, 0, read)
+                    touchActivity()
+                    uploaded += read
+                    val now = SystemClock.elapsedRealtime()
+                    if (uploaded >= localSize || now - lastEmitMs >= 120L) {
+                        lastEmitMs = now
+                        onBytesProgress(uploaded)
+                        onFileBytesProgress("uploading", uploaded, localSize)
+                    }
+                }
+                touchActivity()
+            }
+        }
+    }
+
+    private fun skipLocalFully(input: FileInputStream, bytesToSkip: Long) {
+        var remaining = bytesToSkip
+        while (remaining > 0L) {
+            val skipped = input.skip(remaining)
+            if (skipped <= 0L) {
+                if (input.read() < 0) {
+                    throw IllegalStateException("Unexpected EOF seeking to resume offset $bytesToSkip")
+                }
+                remaining--
+            } else {
+                remaining -= skipped
             }
         }
     }
@@ -496,11 +601,14 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         share: DiskShare,
         remotePath: String,
         expectedSize: Long,
+        onFileBytesProgress: (stage: String, processedBytes: Long, fileTotalBytes: Long) -> Unit,
         isCancelled: () -> Boolean,
         waitIfPaused: () -> Unit,
     ): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(BUFFER_SIZE)
+        var lastEmitMs = 0L
+        onFileBytesProgress("verifying", 0L, expectedSize)
         share.openFile(
             remotePath,
             EnumSet.of(AccessMask.GENERIC_READ),
@@ -524,6 +632,11 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                 }
                 digest.update(buffer, 0, read)
                 offset += read
+                val now = SystemClock.elapsedRealtime()
+                if (offset >= expectedSize || now - lastEmitMs >= 120L) {
+                    lastEmitMs = now
+                    onFileBytesProgress("verifying", offset, expectedSize)
+                }
             }
         }
         return digest.digest().toHexString()
@@ -531,11 +644,15 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
 
     private fun computeLocalSha256(
         localFile: File,
+        totalSize: Long,
+        onFileBytesProgress: (stage: String, processedBytes: Long, fileTotalBytes: Long) -> Unit,
         isCancelled: () -> Boolean,
         waitIfPaused: () -> Unit,
     ): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(BUFFER_SIZE)
+        var hashed = 0L
+        var lastEmitMs = 0L
         FileInputStream(localFile).use { input ->
             while (true) {
                 waitIfPaused()
@@ -544,6 +661,12 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                 if (read <= 0) break
                 touchActivity()
                 digest.update(buffer, 0, read)
+                hashed += read
+                val now = SystemClock.elapsedRealtime()
+                if (hashed >= totalSize || now - lastEmitMs >= 150L) {
+                    lastEmitMs = now
+                    onFileBytesProgress("hashing", hashed, totalSize)
+                }
             }
         }
         return digest.digest().toHexString()

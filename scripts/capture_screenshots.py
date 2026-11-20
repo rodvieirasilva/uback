@@ -95,6 +95,11 @@ def wait_for_element(
 
 
 def relaunch(serial: str, night_mode: str) -> None:
+    # Clear Google Messages notifications from E2E SMS seeding and enable Do Not Disturb
+    # so heads-up notification popups never overlay the AppBar in screenshots.
+    adb(serial, "shell", "cmd", "notification", "set_dnd", "on", check=False)
+    adb(serial, "shell", "pm", "clear", "com.google.android.apps.messaging", check=False)
+    adb(serial, "shell", "cmd", "statusbar", "collapse", check=False)
     adb(serial, "shell", "cmd", "uimode", "night", night_mode, check=False)
     adb(serial, "shell", "am", "force-stop", PKG, check=False)
     time.sleep(1.0)
@@ -121,17 +126,30 @@ def main() -> int:
         time.sleep(0.8)
         screencap(serial, out_dir / f"home-{theme_name}.png")
 
-        adb(serial, "shell", "input", "tap", str(settings_xy[0]), str(settings_xy[1]))
-        wait_for_element(
-            serial,
-            resource_id="settings_save_btn",
-            text_contains="SMB / NAS",
-            timeout_sec=20.0,
-        )
+        for tap_attempt in range(3):
+            adb(serial, "shell", "input", "tap", str(settings_xy[0]), str(settings_xy[1]))
+            try:
+                wait_for_element(
+                    serial,
+                    resource_id="settings_save_btn",
+                    text_contains="SMB / NAS",
+                    timeout_sec=8.0,
+                )
+                break
+            except RuntimeError:
+                if tap_attempt == 2:
+                    raise
+                settings_xy = wait_for_element(
+                    serial,
+                    resource_id="open_settings_btn",
+                    content_desc="Settings",
+                    timeout_sec=10.0,
+                )
         time.sleep(0.8)
         screencap(serial, out_dir / f"settings-{theme_name}.png")
 
     adb(serial, "shell", "cmd", "uimode", "night", "yes", check=False)
+    adb(serial, "shell", "cmd", "notification", "set_dnd", "off", check=False)
     return 0
 
 

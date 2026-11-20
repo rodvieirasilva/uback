@@ -11,6 +11,7 @@ abstract final class AppTestKeys {
   static const String limitMbId = 'limit_mb_btn';
   static const String limitValueInputId = 'limit_value_input';
   static const String startBackupId = 'start_backup_btn';
+  static const String continueBackupId = 'continue_backup_btn';
   static const String pauseBackupId = 'pause_backup_btn';
   static const String resumeBackupId = 'resume_backup_btn';
   static const String stopBackupId = 'stop_backup_btn';
@@ -34,6 +35,7 @@ abstract final class AppTestKeys {
   static const String statusStateId = 'status_state';
   static const String statusStageId = 'status_stage';
   static const String statusCurrentFileId = 'status_current_file';
+  static const String statusCurrentFileProgressId = 'status_current_file_progress';
   static const String errorLogBtnId = 'error_log_btn';
   static const String errorLogListId = 'error_log_list';
 
@@ -79,6 +81,7 @@ abstract final class AppTestKeys {
   static const ValueKey<String> limitMb = ValueKey(limitMbId);
   static const ValueKey<String> limitValueInput = ValueKey(limitValueInputId);
   static const ValueKey<String> startBackup = ValueKey(startBackupId);
+  static const ValueKey<String> continueBackup = ValueKey(continueBackupId);
   static const ValueKey<String> pauseBackup = ValueKey(pauseBackupId);
   static const ValueKey<String> resumeBackup = ValueKey(resumeBackupId);
   static const ValueKey<String> stopBackup = ValueKey(stopBackupId);
@@ -101,6 +104,8 @@ abstract final class AppTestKeys {
   static const ValueKey<String> statusState = ValueKey(statusStateId);
   static const ValueKey<String> statusStage = ValueKey(statusStageId);
   static const ValueKey<String> statusCurrentFile = ValueKey(statusCurrentFileId);
+  static const ValueKey<String> statusCurrentFileProgress =
+      ValueKey(statusCurrentFileProgressId);
   static const ValueKey<String> errorLogBtn = ValueKey(errorLogBtnId);
   static const ValueKey<String> errorLogList = ValueKey(errorLogListId);
 

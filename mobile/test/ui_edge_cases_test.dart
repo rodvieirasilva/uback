@@ -22,6 +22,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   bool stoppedBackup = false;
   BackupProgress latestPolledStatus = const BackupProgress();
   int getSourceStatsCalls = 0;
+  List<BackupItem> lastStartedItems = [];
   List<BackupItem> discoveredItems;
 
   _InteractiveFakeBridge({
@@ -35,7 +36,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Test Phone';
   @override
-  Future<String> getAppVersion() async => '1.2.4';
+  Future<String> getAppVersion() async => '1.2.5';
   @override
   Future<PermissionState> checkPermissions() async => permissions;
   @override
@@ -87,6 +88,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
     required String deviceFolder,
     required List<BackupItem> items,
   }) async {
+    lastStartedItems = items;
     _progressCtrl.add(
       BackupProgress(
         state: BackupRunState.running,
@@ -196,6 +198,26 @@ void main() {
           createdAt: DateTime(2024, 1, 1),
           mimeType: 'image/jpeg',
         ),
+        BackupItem(
+          id: '2',
+          fileName: 'IMG_2.jpg',
+          localPath: '/sdcard/DCIM/Camera/IMG_2.jpg',
+          sourceId: 'camera.images',
+          sourceFolder: 'camera',
+          sizeBytes: 4096,
+          createdAt: DateTime(2024, 1, 2),
+          mimeType: 'image/jpeg',
+        ),
+        BackupItem(
+          id: '3',
+          fileName: 'IMG_3.jpg',
+          localPath: '/sdcard/DCIM/Camera/IMG_3.jpg',
+          sourceId: 'camera.images',
+          sourceFolder: 'camera',
+          sizeBytes: 8192,
+          createdAt: DateTime(2024, 1, 3),
+          mimeType: 'image/jpeg',
+        ),
       ],
     );
     final controller = BackupController(settingsRepo: _repo(), bridge: bridge);
@@ -212,6 +234,31 @@ void main() {
     expect(find.byKey(AppTestKeys.stopBackup), findsOneWidget);
     expect(find.text('Elapsed: 01:24'), findsOneWidget);
     expect(find.text('ETA: ~02:06'), findsOneWidget);
+    // Under 5 seconds on current file -> per-file progress bar is hidden
+    expect(find.byKey(AppTestKeys.statusCurrentFileProgress), findsNothing);
+
+    // When a large file takes >= 5 seconds (hashing, uploading, or verifying), per-file progress bar appears!
+    bridge.emitProgress(
+      const BackupProgress(
+        state: BackupRunState.running,
+        stage: 'verifying',
+        total: 1,
+        remaining: 1,
+        currentFile: 'VID_4K_LARGE.mp4',
+        currentFileBytes: 512 * 1024 * 1024,
+        currentFileTotalBytes: 1024 * 1024 * 1024,
+        currentFileElapsedMs: 12000,
+        bytesTransferred: 1024 * 1024 * 1024,
+        totalBytes: 1024 * 1024 * 1024,
+        elapsedMs: 96000,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(AppTestKeys.statusCurrentFileProgress), findsOneWidget);
+    expect(
+      find.text('Verifying SHA-256: 50% (512 MB / 1.0 GB • 00:12)'),
+      findsOneWidget,
+    );
 
     await tester.ensureVisible(find.byKey(AppTestKeys.pauseBackup));
     await tester.tap(find.byKey(AppTestKeys.pauseBackup));
@@ -227,10 +274,33 @@ void main() {
     expect(bridge.resumedBackup, isTrue);
     expect(find.byKey(AppTestKeys.pauseBackup), findsOneWidget);
 
+    // Emit 1 of 3 files transferred before user taps Stop -> checkpoint saves remaining 2 files!
+    bridge.emitProgress(
+      const BackupProgress(
+        state: BackupRunState.running,
+        stage: 'verified',
+        total: 3,
+        transferred: 1,
+        remaining: 2,
+        currentFile: 'IMG_1.jpg',
+      ),
+    );
+    await tester.pumpAndSettle();
+
     await tester.ensureVisible(find.byKey(AppTestKeys.stopBackup));
     await tester.tap(find.byKey(AppTestKeys.stopBackup));
     await tester.pumpAndSettle();
     expect(bridge.stoppedBackup, isTrue);
+
+    // "Continue From Last Stop (2 files • 12.0 KB)" button appears!
+    expect(find.byKey(AppTestKeys.continueBackup), findsOneWidget);
+    expect(find.text('Continue From Last Stop (2 files • 12.0 KB)'), findsOneWidget);
+
+    // Tap "Continue From Last Stop" -> resumes directly from IMG_2.jpg and IMG_3.jpg (skipping IMG_1.jpg!)
+    await tester.ensureVisible(find.byKey(AppTestKeys.continueBackup));
+    await tester.tap(find.byKey(AppTestKeys.continueBackup));
+    await tester.pumpAndSettle();
+    expect(bridge.lastStartedItems.map((e) => e.fileName).toList(), ['IMG_2.jpg', 'IMG_3.jpg']);
 
     // Emit failed transfer progress -> tap View Errors -> verify sheet content
     bridge.emitProgress(

@@ -123,6 +123,9 @@ object BackupSessionBus {
         "elapsedMs" to 0L,
         "etaMs" to -1L,
         "currentFile" to "",
+        "currentFileBytes" to 0L,
+        "currentFileTotalBytes" to 0L,
+        "currentFileElapsedMs" to 0L,
         "errors" to emptyList<Map<String, String>>(),
     )
 
@@ -227,9 +230,15 @@ class BackupForegroundService : Service() {
         val errors = mutableListOf<Map<String, String>>()
         var activeElapsedMs = 0L
         var activeSegmentStartMs = SystemClock.elapsedRealtime()
+        var fileActiveElapsedMs = 0L
+        var fileSegmentStartMs = 0L
         var latestStage = "connecting"
         var latestFile = ""
         var latestInFlightBytes = 0L
+        var latestFileBytes = 0L
+        var latestFileTotalBytes = 0L
+        var lastNotifUpdateMs = 0L
+        var lastNotifState = ""
 
         fun currentElapsedMs(): Long {
             val runningDelta = if (activeSegmentStartMs > 0L) {
@@ -240,16 +249,41 @@ class BackupForegroundService : Service() {
             return activeElapsedMs + runningDelta
         }
 
+        fun currentFileElapsedMs(): Long {
+            val runningDelta = if (fileSegmentStartMs > 0L) {
+                (SystemClock.elapsedRealtime() - fileSegmentStartMs).coerceAtLeast(0L)
+            } else {
+                0L
+            }
+            return fileActiveElapsedMs + runningDelta
+        }
+
+        fun resetFileTimer(totalBytesForFile: Long) {
+            fileActiveElapsedMs = 0L
+            fileSegmentStartMs = SystemClock.elapsedRealtime()
+            latestFileBytes = 0L
+            latestFileTotalBytes = totalBytesForFile
+        }
+
         fun pauseTimer() {
+            val now = SystemClock.elapsedRealtime()
             if (activeSegmentStartMs > 0L) {
-                activeElapsedMs += (SystemClock.elapsedRealtime() - activeSegmentStartMs).coerceAtLeast(0L)
+                activeElapsedMs += (now - activeSegmentStartMs).coerceAtLeast(0L)
                 activeSegmentStartMs = 0L
+            }
+            if (fileSegmentStartMs > 0L) {
+                fileActiveElapsedMs += (now - fileSegmentStartMs).coerceAtLeast(0L)
+                fileSegmentStartMs = 0L
             }
         }
 
         fun resumeTimer() {
+            val now = SystemClock.elapsedRealtime()
             if (activeSegmentStartMs == 0L) {
-                activeSegmentStartMs = SystemClock.elapsedRealtime()
+                activeSegmentStartMs = now
+            }
+            if (fileSegmentStartMs == 0L && latestFile.isNotBlank()) {
+                fileSegmentStartMs = now
             }
         }
 
@@ -258,14 +292,19 @@ class BackupForegroundService : Service() {
             stage: String,
             currentFile: String,
             inFlightBytes: Long = 0L,
+            fileBytes: Long = latestFileBytes,
+            fileTotalBytes: Long = latestFileTotalBytes,
         ) {
             latestStage = stage
             latestFile = currentFile
             latestInFlightBytes = inFlightBytes
+            latestFileBytes = fileBytes
+            latestFileTotalBytes = fileTotalBytes
             val done = transferred + skipped + failed
             val remaining = (total - done).coerceAtLeast(0)
             val bytesNow = (completedBytes + inFlightBytes).coerceAtMost(totalBytes)
             val elapsedMs = currentElapsedMs()
+            val fileElapsedMs = if (currentFile.isNotBlank()) currentFileElapsedMs() else 0L
             val etaMs = when {
                 state == "completed" -> 0L
                 state == "running" && elapsedMs >= 800L && bytesNow > 0L && totalBytes > bytesNow -> {
@@ -292,6 +331,9 @@ class BackupForegroundService : Service() {
                     "elapsedMs" to elapsedMs,
                     "etaMs" to etaMs,
                     "currentFile" to currentFile,
+                    "currentFileBytes" to fileBytes,
+                    "currentFileTotalBytes" to fileTotalBytes,
+                    "currentFileElapsedMs" to fileElapsedMs,
                     "errors" to errors.toList(),
                 ),
             )
@@ -325,17 +367,28 @@ class BackupForegroundService : Service() {
                 ""
             }
             val summary = "$done / $total • $remaining remaining (${formatBytes(bytesNow)} / ${formatBytes(totalBytes)})$timingSuffix"
-            val detail = if (currentFile.isNotBlank()) "$stageLabel: $currentFile" else stageLabel
+            val fileProgressSuffix = if (fileElapsedMs >= 5000L && fileTotalBytes > 0L) {
+                val filePct = ((fileBytes * 100L) / fileTotalBytes).toInt().coerceIn(0, 100)
+                " ($filePct% • ${formatBytes(fileBytes)} / ${formatBytes(fileTotalBytes)})"
+            } else {
+                ""
+            }
+            val detail = if (currentFile.isNotBlank()) "$stageLabel: $currentFile$fileProgressSuffix" else stageLabel
 
             if (state == "running" || state == "paused") {
-                updateProgressNotification(
-                    title = if (state == "paused") "UBack • Backup paused ($pct%)" else "UBack • $modeVerb media ($pct%)",
-                    summary = summary,
-                    detail = detail,
-                    permille = permille,
-                    indeterminate = total == 0,
-                    isPaused = state == "paused",
-                )
+                val now = SystemClock.elapsedRealtime()
+                if (state != lastNotifState || now - lastNotifUpdateMs >= 400L) {
+                    lastNotifState = state
+                    lastNotifUpdateMs = now
+                    updateProgressNotification(
+                        title = if (state == "paused") "UBack • Backup paused ($pct%)" else "UBack • $modeVerb media ($pct%)",
+                        summary = summary,
+                        detail = detail,
+                        permille = permille,
+                        indeterminate = total == 0,
+                        isPaused = state == "paused",
+                    )
+                }
             } else if (state == "completed" || state == "cancelled" || state == "error") {
                 postCompletionNotification(
                     state = state,
@@ -427,16 +480,21 @@ class BackupForegroundService : Service() {
                 ).filter { it.isNotBlank() }.joinToString("/")
 
                 try {
+                    resetFileTimer(item.sizeBytes)
                     val result = smbClient.backupFileWithVerification(
                         localFile = File(item.localPath),
                         remoteDirRel = remoteDirRel,
                         fileName = item.fileName,
                         createdAtMs = item.createdAtMs,
                         onStage = { stage ->
+                            val inFlight = if (stage == "verifying") item.sizeBytes else latestInFlightBytes
                             emitProgress(
                                 state = "running",
                                 stage = stage,
                                 currentFile = item.fileName,
+                                inFlightBytes = inFlight,
+                                fileBytes = 0L,
+                                fileTotalBytes = item.sizeBytes,
                             )
                         },
                         onBytesProgress = { uploadedBytes ->
@@ -445,6 +503,23 @@ class BackupForegroundService : Service() {
                                 stage = "uploading",
                                 currentFile = item.fileName,
                                 inFlightBytes = uploadedBytes,
+                                fileBytes = uploadedBytes,
+                                fileTotalBytes = item.sizeBytes,
+                            )
+                        },
+                        onFileBytesProgress = { stage, processedBytes, fileTotal ->
+                            val inFlight = when (stage) {
+                                "uploading" -> processedBytes
+                                "verifying" -> latestInFlightBytes
+                                else -> 0L
+                            }
+                            emitProgress(
+                                state = "running",
+                                stage = stage,
+                                currentFile = item.fileName,
+                                inFlightBytes = inFlight,
+                                fileBytes = processedBytes,
+                                fileTotalBytes = fileTotal,
                             )
                         },
                         isCancelled = { BackupSessionBus.cancelRequested.get() },

@@ -21,7 +21,7 @@ void main() {
         case 'getDeviceName':
           return 'Galaxy S23 FE';
         case 'getAppVersion':
-          return '1.2.4';
+          return '1.2.5';
         case 'checkPermissions':
         case 'requestMediaPermissions':
         case 'requestSnapshotPermissions':
@@ -109,6 +109,9 @@ void main() {
             'failed': 1,
             'remaining': 4,
             'currentFile': 'IMG_005.jpg',
+            'currentFileBytes': 262144,
+            'currentFileTotalBytes': 524288,
+            'currentFileElapsedMs': 7000,
             'bytesTransferred': 4096,
             'totalBytes': 10240,
             'elapsedMs': 84000,
@@ -143,7 +146,7 @@ void main() {
     );
 
     expect(await bridge.getDeviceName(), 'Galaxy S23 FE');
-    expect(await bridge.getAppVersion(), '1.2.4');
+    expect(await bridge.getAppVersion(), '1.2.5');
 
     final perms = await bridge.checkPermissions();
     expect(perms.hasMedia, isTrue);
@@ -203,6 +206,11 @@ void main() {
     expect(status.fraction, closeTo(0.4, 0.001));
     expect(status.elapsedMs, 84000);
     expect(status.etaMs, 126000);
+    expect(status.currentFileBytes, 262144);
+    expect(status.currentFileTotalBytes, 524288);
+    expect(status.currentFileElapsedMs, 7000);
+    expect(status.showCurrentFileProgress, isTrue);
+    expect(status.currentFileFraction, closeTo(0.5, 0.001));
     expect(status.errors.length, 1);
     expect(status.errors.first.fileName, 'BAD.jpg');
 

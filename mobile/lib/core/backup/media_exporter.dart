@@ -109,6 +109,9 @@ class BackupProgress {
   final int elapsedMs;
   final int? etaMs;
   final String currentFile;
+  final int currentFileBytes;
+  final int currentFileTotalBytes;
+  final int currentFileElapsedMs;
   final List<BackupErrorEntry> errors;
 
   const BackupProgress({
@@ -124,6 +127,9 @@ class BackupProgress {
     this.elapsedMs = 0,
     this.etaMs,
     this.currentFile = '',
+    this.currentFileBytes = 0,
+    this.currentFileTotalBytes = 0,
+    this.currentFileElapsedMs = 0,
     this.errors = const [],
   });
 
@@ -133,6 +139,21 @@ class BackupProgress {
       state == BackupRunState.scanning ||
       state == BackupRunState.running ||
       state == BackupRunState.paused;
+
+  /// True when a single file has been processing (hashing, uploading, or verifying)
+  /// for at least 5 seconds so the UI displays a dedicated per-file progress bar.
+  bool get showCurrentFileProgress =>
+      isActive &&
+      currentFile.isNotEmpty &&
+      currentFileElapsedMs >= 5000 &&
+      currentFileTotalBytes > 0;
+
+  double get currentFileFraction {
+    if (currentFileTotalBytes > 0) {
+      return (currentFileBytes / currentFileTotalBytes).clamp(0.0, 1.0);
+    }
+    return 0.0;
+  }
 
   double get fraction {
     if (totalBytes > 0) {
@@ -176,6 +197,9 @@ class BackupProgress {
       elapsedMs: (map['elapsedMs'] as num?)?.toInt() ?? 0,
       etaMs: rawEta != null && rawEta >= 0 ? rawEta : null,
       currentFile: (map['currentFile'] as String?) ?? '',
+      currentFileBytes: (map['currentFileBytes'] as num?)?.toInt() ?? 0,
+      currentFileTotalBytes: (map['currentFileTotalBytes'] as num?)?.toInt() ?? 0,
+      currentFileElapsedMs: (map['currentFileElapsedMs'] as num?)?.toInt() ?? 0,
       errors: errors,
     );
   }
