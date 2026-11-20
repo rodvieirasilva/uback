@@ -248,6 +248,15 @@ void main() {
             tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
             await tester.pump(const Duration(milliseconds: 250));
           }
+
+          // Also simulate full Activity/UI teardown and cold reopen while BackupForegroundService
+          // continues updating the notification in the background (Alice's phone scenario!):
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+          await tester.pumpWidget(UBackApp(key: UniqueKey()));
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(find.byKey(AppTestKeys.appLogo), findsOneWidget);
+          expect(find.byKey(AppTestKeys.statusState), findsOneWidget);
           break;
         }
       }

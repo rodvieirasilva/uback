@@ -26,7 +26,7 @@ class CompileTimeDefaults {
   static const String e2eDeviceOverride =
       String.fromEnvironment('UBACK_E2E_DEVICE_OVERRIDE', defaultValue: '');
   static const String appVersion =
-      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.6');
+      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.7');
   static const String buildDate =
       String.fromEnvironment('UBACK_BUILD_DATE', defaultValue: '');
   static const String gitSha =
@@ -246,6 +246,7 @@ class AppSettingsRepository {
   static const _kEnabledSources = 'uback_enabled_sources';
   static const _kCustomFolders = 'uback_custom_folders';
   static const _kCheckpointQueue = 'uback_checkpoint_queue';
+  static const _kCheckpointCursor = 'uback_checkpoint_cursor';
 
   static const _kSecretUser = 'uback_smb_username';
   static const _kSecretPass = 'uback_smb_password';
@@ -326,11 +327,17 @@ class AppSettingsRepository {
     String? password;
     String? whatsappKey;
     try {
-      username = await _secureStore.read(_kSecretUser);
-      password = await _secureStore.read(_kSecretPass);
-      whatsappKey = await _secureStore.read(_kSecretWhatsappKey);
+      username = await _secureStore
+          .read(_kSecretUser)
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
+      password = await _secureStore
+          .read(_kSecretPass)
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
+      whatsappKey = await _secureStore
+          .read(_kSecretWhatsappKey)
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
     } catch (_) {
-      // Fallback safely to compile-time defaults if keystore read fails
+      // Fallback safely to compile-time defaults if keystore read fails or times out
     }
 
     return AppSettings(
@@ -401,6 +408,7 @@ class AppSettingsRepository {
       _kEnabledSources,
       _kCustomFolders,
       _kCheckpointQueue,
+      _kCheckpointCursor,
     ]) {
       await _plainStore.delete(key);
     }
@@ -412,36 +420,89 @@ class AppSettingsRepository {
     return _defaults;
   }
 
-  /// Loads any unfinished backup queue persisted when a previous backup was stopped or interrupted.
+  /// Purges any legacy inline checkpoint queue from SharedPreferences so startup never stalls.
   Future<List<BackupItem>> loadCheckpointQueue() async {
-    final raw = await _plainStore.read(_kCheckpointQueue);
-    if (raw == null || raw.trim().isEmpty) return const [];
+    await _plainStore.delete(_kCheckpointQueue);
+    return const [];
+  }
+
+  /// Loads the lightweight O(1) checkpoint cursor (< 200 bytes).
+  Future<CheckpointCursor?> loadCheckpointCursor() async {
+    await _plainStore.delete(_kCheckpointQueue);
+    final raw = await _plainStore.read(_kCheckpointCursor);
+    if (raw == null || raw.trim().isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is! List) return const [];
-      return decoded
-          .whereType<Map<Object?, Object?>>()
-          .map(BackupItem.fromMap)
-          .where((item) => item.localPath.isNotEmpty && !item.isSnapshot)
-          .toList();
+      if (decoded is Map<Object?, Object?>) {
+        return CheckpointCursor.fromMap(decoded);
+      }
+      return null;
     } catch (_) {
-      return const [];
+      await _plainStore.delete(_kCheckpointCursor);
+      return null;
     }
   }
 
-  /// Persists the remaining unfinished [BackupItem] queue so the user can tap
-  /// "Continue From Last Stop" even after stopping or restarting the app.
+  /// Persists ONLY a tiny O(1) cursor (< 200 bytes) when a backup starts, pauses, or stops
+  /// (never storing a multi-megabyte JSON file list in SharedPreferences).
   Future<void> saveCheckpointQueue(List<BackupItem> items) async {
+    await _plainStore.delete(_kCheckpointQueue);
     final persistable = items.where((i) => !i.isSnapshot).toList();
     if (persistable.isEmpty) {
-      await _plainStore.delete(_kCheckpointQueue);
+      await clearCheckpointQueue();
       return;
     }
-    final encoded = jsonEncode(persistable.map((e) => e.toMap()).toList());
-    await _plainStore.write(_kCheckpointQueue, encoded);
+    final first = persistable.first;
+    final totalBytes = persistable.fold<int>(0, (sum, i) => sum + i.sizeBytes);
+    final cursor = CheckpointCursor(
+      cursorCreatedAtMs: first.createdAt.millisecondsSinceEpoch,
+      cursorFileName: first.fileName,
+      remainingFiles: persistable.length,
+      remainingBytes: totalBytes,
+    );
+    await _plainStore.write(_kCheckpointCursor, jsonEncode(cursor.toMap()));
   }
 
   Future<void> clearCheckpointQueue() async {
     await _plainStore.delete(_kCheckpointQueue);
+    await _plainStore.delete(_kCheckpointCursor);
+  }
+}
+
+/// Lightweight O(1) persistent checkpoint cursor (< 200 bytes JSON) used to resume
+/// huge multi-thousand-file backup queues across app restarts without storing megabytes in SharedPreferences.
+class CheckpointCursor {
+  final int cursorCreatedAtMs;
+  final String cursorFileName;
+  final int remainingFiles;
+  final int remainingBytes;
+
+  const CheckpointCursor({
+    required this.cursorCreatedAtMs,
+    required this.cursorFileName,
+    required this.remainingFiles,
+    required this.remainingBytes,
+  });
+
+  factory CheckpointCursor.fromMap(Map<Object?, Object?> map) => CheckpointCursor(
+        cursorCreatedAtMs: (map['cursorCreatedAtMs'] as num?)?.toInt() ?? 0,
+        cursorFileName: (map['cursorFileName'] as String?) ?? '',
+        remainingFiles: (map['remainingFiles'] as num?)?.toInt() ?? 0,
+        remainingBytes: (map['remainingBytes'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'cursorCreatedAtMs': cursorCreatedAtMs,
+        'cursorFileName': cursorFileName,
+        'remainingFiles': remainingFiles,
+        'remainingBytes': remainingBytes,
+      };
+
+  /// Returns true if [item] is at or after this stopped cursor in global oldest-first order.
+  bool includes(BackupItem item) {
+    final itemMs = item.createdAt.millisecondsSinceEpoch;
+    if (itemMs > cursorCreatedAtMs) return true;
+    if (itemMs < cursorCreatedAtMs) return false;
+    return item.fileName.compareTo(cursorFileName) >= 0;
   }
 }

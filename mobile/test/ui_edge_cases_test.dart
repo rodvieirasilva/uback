@@ -36,7 +36,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Test Phone';
   @override
-  Future<String> getAppVersion() async => '1.2.6';
+  Future<String> getAppVersion() async => '1.2.7';
   @override
   Future<PermissionState> checkPermissions() async => permissions;
   @override
@@ -482,5 +482,87 @@ void main() {
     expect(resumeCtrl.progress.state, BackupRunState.completed);
     expect(resumeBridge.getSourceStatsCalls, greaterThan(scansAfterInit));
     resumeCtrl.dispose();
+
+    // Simulate Alice's phone scenario: huge 5,000-file backup queue with hundreds of rapid
+    // progress updates + reopening app while BackupForegroundService is actively running!
+    // Must perform ZERO per-file SharedPreferences writes during active run, store only a <200-byte
+    // cursor on Stop, and render immediately without scanning MediaStore when reopened mid-run.
+    final hugeItems = List<BackupItem>.generate(
+      5000,
+      (i) => BackupItem(
+        id: 'item_$i',
+        fileName: 'IMG_${i.toString().padLeft(5, '0')}.jpg',
+        localPath: '/sdcard/DCIM/Camera/IMG_${i.toString().padLeft(5, '0')}.jpg',
+        sourceId: 'camera.images',
+        sourceFolder: 'camera',
+        sizeBytes: 1024 * 1024,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(1700000000000 + i * 1000),
+        mimeType: 'image/jpeg',
+      ),
+    );
+    final hugePlainStore = InMemoryKeyValueStore();
+    final hugeRepo = AppSettingsRepository(
+      plainStore: hugePlainStore,
+      secureStore: InMemoryKeyValueStore(),
+      defaults: const AppSettings(
+        host: '192.168.1.10',
+        port: 445,
+        share: 'safe',
+        basePath: 'local/phone',
+        username: 'user',
+        password: 'pw',
+        domain: '',
+        deviceFolderOverride: '',
+      ),
+    );
+    final hugeBridge = _InteractiveFakeBridge(discoveredItems: hugeItems);
+    final hugeCtrl = BackupController(settingsRepo: hugeRepo, bridge: hugeBridge);
+    await hugeCtrl.init();
+    await hugeCtrl.startBackup();
+
+    // For 5,000 items (> 300 threshold), inline uback_checkpoint_queue MUST be null (0 MB in SharedPreferences!)
+    // and only the tiny <200-byte uback_checkpoint_cursor is stored!
+    expect(await hugePlainStore.read('uback_checkpoint_queue'), isNull);
+    final initialCursorRaw = await hugePlainStore.read('uback_checkpoint_cursor');
+    expect(initialCursorRaw, isNotNull);
+    expect(initialCursorRaw!.length, lessThan(250));
+
+    // Fire 1,200 rapid progress updates -> must complete in < 50ms with zero freeze!
+    final sw = Stopwatch()..start();
+    for (var done = 1; done <= 1200; done++) {
+      hugeBridge.emitProgress(
+        BackupProgress(
+          state: BackupRunState.running,
+          stage: 'uploading',
+          total: 5000,
+          transferred: done,
+          remaining: 5000 - done,
+          currentFile: hugeItems[done].fileName,
+        ),
+      );
+    }
+    await Future<void>.delayed(Duration.zero);
+    sw.stop();
+    expect(sw.elapsedMilliseconds, lessThan(500));
+
+    // Simulate user stopping at file 1,200 / 5,000, closing the app, and reopening a brand-new controller:
+    await hugeCtrl.stopBackup();
+    await Future<void>.delayed(Duration.zero);
+    expect(hugeCtrl.resumableFileCount, 3800);
+    expect(await hugePlainStore.read('uback_checkpoint_queue'), isNull);
+    final stoppedCursorRaw = await hugePlainStore.read('uback_checkpoint_cursor');
+    expect(stoppedCursorRaw!.length, lessThan(250));
+    hugeCtrl.dispose();
+
+    // Brand-new controller reopened after app restart loads the 3,800-file cursor in O(1)
+    // and continues from IMG_01200.jpg!
+    final reopenedCtrl = BackupController(settingsRepo: hugeRepo, bridge: hugeBridge);
+    await reopenedCtrl.init();
+    expect(reopenedCtrl.canContinueFromStopped, isTrue);
+    expect(reopenedCtrl.resumableFileCount, 3800);
+    await reopenedCtrl.continueBackup();
+    expect(hugeBridge.lastStartedItems.length, 3800);
+    expect(hugeBridge.lastStartedItems.first.fileName, 'IMG_01200.jpg');
+    reopenedCtrl.dispose();
   });
 }
