@@ -36,7 +36,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Test Phone';
   @override
-  Future<String> getAppVersion() async => '1.2.5';
+  Future<String> getAppVersion() async => '1.2.6';
   @override
   Future<PermissionState> checkPermissions() async => permissions;
   @override

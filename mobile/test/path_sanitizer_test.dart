@@ -93,4 +93,17 @@ void main() {
       expect(PathSanitizer.formatDuration(3918000), '1:05:18');
     });
   });
+
+  group('PathSanitizer.selectDynamicBufferSize', () {
+    test('scales transfer buffer dynamically from 64 KB up to 4 MB for huge WhatsApp DBs & 4K videos',
+        () {
+      expect(PathSanitizer.selectDynamicBufferSize(12 * 1024), 64 * 1024);
+      expect(PathSanitizer.selectDynamicBufferSize(256 * 1024), 256 * 1024);
+      expect(PathSanitizer.selectDynamicBufferSize(2 * 1024 * 1024), 256 * 1024);
+      expect(PathSanitizer.selectDynamicBufferSize(8 * 1024 * 1024), 1024 * 1024);
+      expect(PathSanitizer.selectDynamicBufferSize(32 * 1024 * 1024), 1024 * 1024);
+      expect(PathSanitizer.selectDynamicBufferSize(64 * 1024 * 1024), 4 * 1024 * 1024);
+      expect(PathSanitizer.selectDynamicBufferSize(500 * 1024 * 1024), 4 * 1024 * 1024);
+    });
+  });
 }

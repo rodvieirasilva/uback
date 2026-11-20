@@ -15,7 +15,7 @@ class _AdaptiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Galaxy Z Fold';
   @override
-  Future<String> getAppVersion() async => '1.2.5';
+  Future<String> getAppVersion() async => '1.2.6';
   @override
   Future<PermissionState> checkPermissions() async =>
       const PermissionState(hasMedia: true, hasAllFiles: true, hasNotifications: true);

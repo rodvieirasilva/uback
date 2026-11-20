@@ -285,7 +285,11 @@ verify_emulator_cleanup() {
     echo "FAIL: Crop Mode unexpectedly affected Call Logs!" >&2
     exit 1
   fi
-  echo "OK: Crop Mode left opt-in Downloads, read-only WhatsApp DBs, Contacts, SMS, and Call Logs intact on device."
+  if ! adb -s "$EMU_SERIAL" logcat -d -s UBack:I 2>/dev/null | grep -q "single-pass=true, buffer="; then
+    echo "FAIL: Expected single-pass hash-while-uploading + dynamic buffer sizing in logcat!" >&2
+    exit 1
+  fi
+  echo "OK: Crop Mode left opt-in Downloads, read-only WhatsApp DBs, Contacts, SMS, and Call Logs intact on device (single-pass hash+upload & dynamic buffer verified)."
 }
 
 ensure_emulator
