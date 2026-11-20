@@ -11,6 +11,9 @@ class _FakeMediaExporter implements MediaExporter {
   _FakeMediaExporter(this.items, {this.failVerificationIds = const {}});
 
   @override
+  String get id => 'fake_exporter';
+
+  @override
   String get mediaTypeName => 'Fake';
 
   @override

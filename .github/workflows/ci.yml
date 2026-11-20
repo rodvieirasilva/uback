@@ -30,8 +30,8 @@ jobs:
       - name: Static analysis
         run: mise run analyze
 
-      - name: Unit & widget tests
-        run: mise run test
+      - name: Unit & widget tests (with >= 80% coverage gate)
+        run: mise run coverage
 
   build-apk:
     name: Build Android APKs

@@ -96,12 +96,39 @@ class MainActivity : FlutterActivity() {
                 result.success(true)
             }
 
+            "requestSnapshotPermissions" -> {
+                val rawSources = call.argument<List<*>>("sources")?.mapNotNull { it as? String }?.toSet() ?: emptySet()
+                val needed = mutableListOf<String>()
+                if ("snapshots.contacts" in rawSources &&
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    needed.add(Manifest.permission.READ_CONTACTS)
+                }
+                if ("snapshots.sms" in rawSources &&
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    needed.add(Manifest.permission.READ_SMS)
+                }
+                if ("snapshots.call_logs" in rawSources &&
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    needed.add(Manifest.permission.READ_CALL_LOG)
+                }
+                if (needed.isEmpty()) {
+                    result.success(currentPermissionState())
+                } else {
+                    pendingPermissionResult = result
+                    ActivityCompat.requestPermissions(this, needed.toTypedArray(), PERM_REQUEST_CODE)
+                }
+            }
+
             "discoverMedia" -> {
                 val rawSources = call.argument<List<*>>("enabledSources")
                 val enabledSources = rawSources
                     ?.mapNotNull { it as? String }
                     ?.toSet()
-                    ?: MediaSourceClassifier.ALL_SOURCE_IDS
+                    ?: MediaSourceClassifier.ALL_BUILTIN_SOURCE_IDS
+                val customFolders = parseCustomFolders(call.argument<List<*>>("customFolders"))
                 val perSourceLimit = call.argument<Number>("perSourceLimit")?.toInt()
                 scope.launch {
                     try {
@@ -109,6 +136,7 @@ class MainActivity : FlutterActivity() {
                             MediaDiscovery.discover(
                                 context = applicationContext,
                                 enabledSources = enabledSources,
+                                customFolders = customFolders,
                                 perSourceLimit = perSourceLimit,
                             ).map { it.toMap() }
                         }
@@ -120,10 +148,11 @@ class MainActivity : FlutterActivity() {
             }
 
             "getSourceStats" -> {
+                val customFolders = parseCustomFolders(call.argument<List<*>>("customFolders"))
                 scope.launch {
                     try {
                         val stats = withContext(Dispatchers.IO) {
-                            MediaDiscovery.getSourceStats(applicationContext)
+                            MediaDiscovery.getSourceStats(applicationContext, customFolders)
                         }
                         result.success(stats)
                     } catch (e: Throwable) {
@@ -180,6 +209,7 @@ class MainActivity : FlutterActivity() {
                         sourceFolder = m["sourceFolder"] as? String ?: "camera",
                         sizeBytes = (m["sizeBytes"] as? Number)?.toLong() ?: 0L,
                         createdAtMs = (m["createdAtMs"] as? Number)?.toLong() ?: 0L,
+                        isSnapshot = (m["isSnapshot"] as? Boolean) ?: false,
                     )
                 }
 
@@ -211,6 +241,13 @@ class MainActivity : FlutterActivity() {
             }
 
             else -> result.notImplemented()
+        }
+    }
+
+    private fun parseCustomFolders(raw: List<*>?): List<CustomFolderSpec> {
+        if (raw == null) return emptyList()
+        return raw.mapNotNull { entry ->
+            (entry as? Map<*, *>)?.let(CustomFolderSpec::fromMap)
         }
     }
 

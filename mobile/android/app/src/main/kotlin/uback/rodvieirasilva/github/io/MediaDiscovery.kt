@@ -18,6 +18,7 @@ data class DiscoveredMediaItem(
     val sizeBytes: Long,
     val createdAtMs: Long,
     val mimeType: String,
+    val isSnapshot: Boolean = false,
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
         "id" to id,
@@ -29,6 +30,7 @@ data class DiscoveredMediaItem(
         "sizeBytes" to sizeBytes,
         "createdAtMs" to createdAtMs,
         "mimeType" to mimeType,
+        "isSnapshot" to isSnapshot,
     )
 }
 
@@ -49,13 +51,14 @@ object MediaDiscovery {
     }
 
     /**
-     * Discovers items across [enabledSources]. When [perSourceLimit] is provided (e.g. for an
-     * "oldest N files" batch), keeps at most [perSourceLimit] oldest candidates per source first
-     * and then merges & sorts globally oldest-first across ALL enabled sources.
+     * Discovers items across [enabledSources] and [customFolders]. When [perSourceLimit] is
+     * provided, caps each source to its oldest [perSourceLimit] candidates first, then merges
+     * and sorts globally oldest-first across ALL enabled sources.
      */
     fun discover(
         context: Context,
-        enabledSources: Set<String> = MediaSourceClassifier.ALL_SOURCE_IDS,
+        enabledSources: Set<String> = MediaSourceClassifier.ALL_BUILTIN_SOURCE_IDS,
+        customFolders: List<CustomFolderSpec> = emptyList(),
         perSourceLimit: Int? = null,
     ): List<DiscoveredMediaItem> {
         if (enabledSources.isEmpty()) return emptyList()
@@ -68,6 +71,7 @@ object MediaDiscovery {
             collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             mediaKind = "image",
             enabledSources = enabledSources,
+            customFolders = customFolders,
             seenPaths = seenPaths,
             out = collected,
         )
@@ -76,6 +80,7 @@ object MediaDiscovery {
             collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
             mediaKind = "video",
             enabledSources = enabledSources,
+            customFolders = customFolders,
             seenPaths = seenPaths,
             out = collected,
         )
@@ -84,12 +89,16 @@ object MediaDiscovery {
             collectionUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
             mediaKind = "audio",
             enabledSources = enabledSources,
+            customFolders = customFolders,
             seenPaths = seenPaths,
             out = collected,
         )
 
-        // Direct filesystem pass for WhatsApp Sent / Voice Notes (.nomedia) & Recordings.
-        scanDirectRoots(enabledSources, seenPaths, collected)
+        // Direct filesystem scan for .nomedia directories, Documents, Downloads, RAW, Telegram, Custom folders.
+        scanDirectRoots(enabledSources, customFolders, seenPaths, collected)
+
+        // Read-only device snapshot exports (Contacts / SMS / Call Logs) if enabled.
+        collected.addAll(SnapshotExporter.exportEnabledSnapshots(context, enabledSources))
 
         val comparator = compareBy<DiscoveredMediaItem> { it.createdAtMs }
             .thenBy { it.fileName }
@@ -108,35 +117,43 @@ object MediaDiscovery {
     }
 
     /**
-     * Fast aggregate stats (count + totalBytes) per leaf source ID across MediaStore
-     * and direct WhatsApp/Recordings folders.
+     * Fast aggregate stats (count + totalBytes) per leaf source ID across MediaStore,
+     * direct directories (including user custom folders), and device snapshots.
      */
-    fun getSourceStats(context: Context): Map<String, Map<String, Any>> {
+    fun getSourceStats(
+        context: Context,
+        customFolders: List<CustomFolderSpec> = emptyList(),
+    ): Map<String, Map<String, Any>> {
+        val allIds = MediaSourceClassifier.BUILTIN_FILE_SOURCE_IDS + customFolders.map { it.id }
         val counts = mutableMapOf<String, Int>()
         val bytes = mutableMapOf<String, Long>()
-        for (id in MediaSourceClassifier.ALL_SOURCE_IDS) {
+        for (id in allIds) {
             counts[id] = 0
             bytes[id] = 0L
         }
 
         val seenPaths = HashSet<String>()
-        accumulateMediaStoreStats(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image", seenPaths, counts, bytes)
-        accumulateMediaStoreStats(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video", seenPaths, counts, bytes)
-        accumulateMediaStoreStats(context, MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, "audio", seenPaths, counts, bytes)
-        accumulateDirectStats(seenPaths, counts, bytes)
+        accumulateMediaStoreStats(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image", customFolders, seenPaths, counts, bytes)
+        accumulateMediaStoreStats(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video", customFolders, seenPaths, counts, bytes)
+        accumulateMediaStoreStats(context, MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, "audio", customFolders, seenPaths, counts, bytes)
+        accumulateDirectStats(customFolders, seenPaths, counts, bytes)
 
-        return MediaSourceClassifier.ALL_SOURCE_IDS.associateWith { id ->
-            mapOf(
+        val result = allIds.associateWith { id ->
+            mapOf<String, Any>(
                 "count" to (counts[id] ?: 0),
                 "totalBytes" to (bytes[id] ?: 0L),
             )
-        }
+        }.toMutableMap()
+
+        result.putAll(SnapshotExporter.estimateStats(context))
+        return result
     }
 
     private fun accumulateMediaStoreStats(
         context: Context,
         collectionUri: Uri,
         mediaKind: String,
+        customFolders: List<CustomFolderSpec>,
         seenPaths: HashSet<String>,
         counts: MutableMap<String, Int>,
         bytes: MutableMap<String, Long>,
@@ -167,7 +184,7 @@ object MediaDiscovery {
             while (cursor.moveToNext()) {
                 val localPath = if (dataIdx >= 0) cursor.getString(dataIdx) else null
                 val relPath = if (relIdx >= 0) cursor.getString(relIdx) else null
-                val classified = MediaSourceClassifier.classify(relPath, localPath, mediaKind) ?: continue
+                val classified = MediaSourceClassifier.classify(relPath, localPath, mediaKind, customFolders) ?: continue
                 val size = cursor.getLong(sizeIdx)
                 if (size <= 0L) continue
                 if (!localPath.isNullOrBlank()) {
@@ -181,14 +198,15 @@ object MediaDiscovery {
     }
 
     private fun accumulateDirectStats(
+        customFolders: List<CustomFolderSpec>,
         seenPaths: HashSet<String>,
         counts: MutableMap<String, Int>,
         bytes: MutableMap<String, Long>,
     ) {
-        for (root in MediaSourceClassifier.directScanRoots()) {
+        for (root in MediaSourceClassifier.directScanRoots(customFolders)) {
             walkFiles(root) { file ->
-                val kind = MediaSourceClassifier.mediaKindFromPath(file.name, null) ?: return@walkFiles
-                val classified = MediaSourceClassifier.classify(null, file.absolutePath, kind) ?: return@walkFiles
+                val kind = MediaSourceClassifier.fileKindFromPath(file.name, null)
+                val classified = MediaSourceClassifier.classify(null, file.absolutePath, kind, customFolders) ?: return@walkFiles
                 val size = file.length()
                 if (size <= 0L) return@walkFiles
                 val key = canonicalKey(file.absolutePath)
@@ -201,13 +219,14 @@ object MediaDiscovery {
 
     private fun scanDirectRoots(
         enabledSources: Set<String>,
+        customFolders: List<CustomFolderSpec>,
         seenPaths: HashSet<String>,
         out: MutableList<DiscoveredMediaItem>,
     ) {
-        for (root in MediaSourceClassifier.directScanRoots()) {
+        for (root in MediaSourceClassifier.directScanRoots(customFolders)) {
             walkFiles(root) { file ->
-                val kind = MediaSourceClassifier.mediaKindFromPath(file.name, null) ?: return@walkFiles
-                val classified = MediaSourceClassifier.classify(null, file.absolutePath, kind) ?: return@walkFiles
+                val kind = MediaSourceClassifier.fileKindFromPath(file.name, null)
+                val classified = MediaSourceClassifier.classify(null, file.absolutePath, kind, customFolders) ?: return@walkFiles
                 if (!enabledSources.contains(classified.sourceId)) return@walkFiles
                 val size = file.length()
                 if (size <= 0L) return@walkFiles
@@ -260,6 +279,7 @@ object MediaDiscovery {
         collectionUri: Uri,
         mediaKind: String,
         enabledSources: Set<String>,
+        customFolders: List<CustomFolderSpec>,
         seenPaths: HashSet<String>,
         out: MutableList<DiscoveredMediaItem>,
     ) {
@@ -309,7 +329,7 @@ object MediaDiscovery {
                 val localPath = if (dataIdx >= 0) cursor.getString(dataIdx) else null
                 val relPath = if (relIdx >= 0) cursor.getString(relIdx) else null
 
-                val classified = MediaSourceClassifier.classify(relPath, localPath, mediaKind) ?: continue
+                val classified = MediaSourceClassifier.classify(relPath, localPath, mediaKind, customFolders) ?: continue
                 if (!enabledSources.contains(classified.sourceId)) continue
                 if (localPath.isNullOrBlank()) continue
 

@@ -21,6 +21,7 @@ class BackupItem {
   final int sizeBytes;
   final DateTime createdAt; // Used for oldest-first sorting and YYYY/MM pathing
   final String mimeType;
+  final bool isSnapshot;
 
   const BackupItem({
     required this.id,
@@ -32,6 +33,7 @@ class BackupItem {
     required this.sizeBytes,
     required this.createdAt,
     required this.mimeType,
+    this.isSnapshot = false,
   }) : sourceId = sourceId ?? sourceFolder;
 
   factory BackupItem.fromMap(Map<Object?, Object?> map) {
@@ -47,6 +49,7 @@ class BackupItem {
       sizeBytes: (map['sizeBytes'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMs),
       mimeType: (map['mimeType'] as String?) ?? 'application/octet-stream',
+      isSnapshot: (map['isSnapshot'] as bool?) ?? false,
     );
   }
 
@@ -60,6 +63,7 @@ class BackupItem {
         'sizeBytes': sizeBytes,
         'createdAtMs': createdAt.millisecondsSinceEpoch,
         'mimeType': mimeType,
+        'isSnapshot': isSnapshot,
       };
 }
 
@@ -178,9 +182,11 @@ class PermissionState {
 }
 
 /// Contract all Media Exporters must implement.
-/// Phase 1 implements `ImageVideoMediaExporter` (Camera & Screenshots only).
 abstract class MediaExporter {
-  /// User-friendly title for the UI (e.g., "Camera & Screenshots").
+  /// Stable identifier used for persisting the last active exporter.
+  String get id;
+
+  /// User-friendly title for the UI (e.g., "Selected Media Sources").
   String get mediaTypeName;
 
   /// Discovers local files sorted oldest-first (ascending by createdAt),

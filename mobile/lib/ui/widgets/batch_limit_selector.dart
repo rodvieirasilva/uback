@@ -7,6 +7,7 @@ import '../../core/testing/test_keys.dart';
 class BatchLimitSelector extends StatelessWidget {
   final BackupLimitType limitType;
   final TextEditingController valueController;
+  final FocusNode? focusNode;
   final bool enabled;
   final ValueChanged<BackupLimitType> onSelectType;
   final ValueChanged<int> onChangeValue;
@@ -15,6 +16,7 @@ class BatchLimitSelector extends StatelessWidget {
     super.key,
     required this.limitType,
     required this.valueController,
+    this.focusNode,
     required this.enabled,
     required this.onSelectType,
     required this.onChangeValue,
@@ -74,6 +76,7 @@ class BatchLimitSelector extends StatelessWidget {
             child: TextField(
               key: AppTestKeys.limitValueInput,
               controller: valueController,
+              focusNode: focusNode,
               enabled: enabled,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],

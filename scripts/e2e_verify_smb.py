@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify E2E uploaded SMB files, SHA-256 hashes, nested source layout, and untracked exclusion."""
+"""Verify E2E uploaded SMB files, SHA-256 hashes, nested source layout, and opt-in exclusion."""
 
 from __future__ import annotations
 
@@ -11,10 +11,14 @@ import sys
 EXPECTED_RELATIVE_PATHS = {
     "PTT-20220501-WA0001.opus": "whatsapp/received/audios/2022/05/PTT-20220501-WA0001.opus",
     "IMG_20230110_090000.jpg": "camera/2023/01/IMG_20230110_090000.jpg",
+    "invoice_2023.pdf": "whatsapp/received/documents/2023/02/invoice_2023.pdf",
     "REC_20230412_100000.m4a": "recordings/2023/04/REC_20230412_100000.m4a",
     "Screenshot_20230705_110000.png": "screenshots/2023/07/Screenshot_20230705_110000.png",
+    "Screen_20230901_140000.mp4": "screen-recordings/2023/09/Screen_20230901_140000.mp4",
+    "notes_2024.txt": "documents/2024/01/notes_2024.txt",
     "VID-20240201-WA0002.mp4": "whatsapp/sent/videos/2024/02/VID-20240201-WA0002.mp4",
     "VID_20240315_120000.mp4": "camera/2024/03/VID_20240315_120000.mp4",
+    "drone_2024.mp4": "custom/dji-media/2024/05/drone_2024.mp4",
     "IMG-20250620-WA0003.jpg": "whatsapp/received/images/2025/06/IMG-20250620-WA0003.jpg",
 }
 
@@ -47,9 +51,12 @@ def main() -> int:
 
     download_hits = list(dest_root.rglob("*random_download*"))
     if download_hits:
-        raise SystemExit(f"FAIL: Untracked Download file should NOT have been backed up: {download_hits}")
+        raise SystemExit(f"FAIL: Opt-in Download file should NOT have been backed up: {download_hits}")
 
-    print("OK: All 7 multi-source files verified, zero .uback.tmp leftovers, Download strictly excluded.")
+    print(
+        f"OK: All {len(EXPECTED_RELATIVE_PATHS)} multi-source & custom-folder files verified, "
+        "zero .uback.tmp leftovers, opt-in Download strictly excluded."
+    )
     return 0
 
 

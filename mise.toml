@@ -25,6 +25,10 @@ description = "Run Flutter unit and widget tests"
 dir = "mobile"
 run = "flutter test"
 
+[tasks.coverage]
+description = "Run Flutter unit/widget tests with coverage and enforce >= 80% line coverage"
+run = "cd mobile && flutter test --coverage && cd .. && python3 scripts/check_coverage.py mobile/coverage/lcov.info --min 80"
+
 [tasks.setup-avd]
 description = "Ensure the Android test AVD exists"
 run = "bash scripts/ensure_avd.sh"
@@ -50,8 +54,8 @@ description = "Capture updated Dark & Light screenshots in docs/screenshots/ via
 run = "bash scripts/update_screenshots.sh"
 
 [tasks.release-check]
-description = "Run analyze, unit/widget tests, and full Emulator E2E tests before releasing"
-depends = ["analyze", "test", "test-e2e"]
+description = "Run analyze, unit/widget tests with >=80% coverage, and full Emulator E2E tests before releasing"
+depends = ["analyze", "coverage", "test-e2e"]
 
 [tasks.build-apk]
 description = "Build debug APK with config.toml defaults injected"

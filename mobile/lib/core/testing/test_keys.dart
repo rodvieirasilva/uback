@@ -58,6 +58,12 @@ abstract final class AppTestKeys {
   static const String settingsResetDefaultsId = 'settings_reset_defaults_btn';
   static const String settingsTestConnectionId = 'settings_test_connection_btn';
   static const String settingsAllFilesPermId = 'settings_all_files_permission_btn';
+  static const String settingsCustomFolderPathId = 'settings_custom_folder_path_input';
+  static const String settingsCustomFolderNameId = 'settings_custom_folder_name_input';
+  static const String settingsAddCustomFolderId = 'settings_add_custom_folder_btn';
+  static String settingsRemoveCustomFolderId(String id) => 'settings_remove_custom_folder_$id';
+  static ValueKey<String> settingsRemoveCustomFolder(String id) =>
+      ValueKey(settingsRemoveCustomFolderId(id));
 
   // ValueKeys for Flutter finder convenience
   static const ValueKey<String> modeCopy = ValueKey(modeCopyId);
@@ -105,6 +111,9 @@ abstract final class AppTestKeys {
   static const ValueKey<String> settingsResetDefaults = ValueKey(settingsResetDefaultsId);
   static const ValueKey<String> settingsTestConnection = ValueKey(settingsTestConnectionId);
   static const ValueKey<String> settingsAllFilesPerm = ValueKey(settingsAllFilesPermId);
+  static const ValueKey<String> settingsCustomFolderPath = ValueKey(settingsCustomFolderPathId);
+  static const ValueKey<String> settingsCustomFolderName = ValueKey(settingsCustomFolderNameId);
+  static const ValueKey<String> settingsAddCustomFolder = ValueKey(settingsAddCustomFolderId);
 }
 
 /// Wraps a widget with a Semantics identifier so both Flutter tests and native UIAutomator

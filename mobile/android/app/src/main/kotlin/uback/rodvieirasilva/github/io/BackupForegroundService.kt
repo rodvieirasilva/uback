@@ -34,6 +34,7 @@ data class BackupItemPayload(
     val sourceFolder: String,
     val sizeBytes: Long,
     val createdAtMs: Long,
+    val isSnapshot: Boolean = false,
 )
 
 data class BackupJobRequest(
@@ -268,8 +269,12 @@ class BackupForegroundService : Service() {
                         isCancelled = { BackupSessionBus.cancelRequested.get() },
                     )
 
-                    // Strict Deletion Gate (Crop Mode): delete ONLY after full SHA-256 verification succeeded!
-                    if (request.mode == "crop") {
+                    // Snapshot temp files live in app cache — always remove temp file after verified upload,
+                    // never touching actual Android Contacts / SMS / Call Logs even in Crop Mode.
+                    if (item.isSnapshot) {
+                        runCatching { File(item.localPath).delete() }
+                    } else if (request.mode == "crop") {
+                        // Strict Deletion Gate (Crop Mode): delete ONLY after full SHA-256 verification succeeded!
                         emitProgress(
                             state = "running",
                             stage = "cleaning_up",

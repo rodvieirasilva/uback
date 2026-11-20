@@ -142,26 +142,34 @@ seed_emulator_media() {
   fi
 
   local WA_MEDIA="/sdcard/Android/media/com.whatsapp/WhatsApp/Media"
-  adb -s "$EMU_SERIAL" shell "rm -rf /sdcard/DCIM/Camera/* /sdcard/DCIM/Screenshots/* /sdcard/Pictures/Screenshots/* '/sdcard/Pictures/WhatsApp Images/'* '$WA_MEDIA' /sdcard/Recordings/* /sdcard/Download/random_download.jpg && mkdir -p /sdcard/DCIM/Camera /sdcard/Pictures/Screenshots '$WA_MEDIA/WhatsApp Images' '$WA_MEDIA/WhatsApp Video/Sent' '$WA_MEDIA/WhatsApp Voice Notes/202218' '/sdcard/Recordings/Voice Recorder' /sdcard/Download"
+  adb -s "$EMU_SERIAL" shell "rm -rf /sdcard/DCIM/Camera/* /sdcard/DCIM/Screenshots/* /sdcard/Pictures/Screenshots/* '/sdcard/DCIM/Screen recordings/'* /sdcard/Movies/Screenrecords/* '/sdcard/Pictures/WhatsApp Images/'* '$WA_MEDIA' /sdcard/Recordings/* /sdcard/Documents/* /sdcard/DJI /sdcard/Download/random_download.jpg && mkdir -p /sdcard/DCIM/Camera /sdcard/Pictures/Screenshots /sdcard/Movies/Screenrecords '$WA_MEDIA/WhatsApp Images' '$WA_MEDIA/WhatsApp Video/Sent' '$WA_MEDIA/WhatsApp Voice Notes/202218' '$WA_MEDIA/WhatsApp Documents' '/sdcard/Recordings/Voice Recorder' /sdcard/Documents /sdcard/DJI/Media /sdcard/Download"
 
-  # Place .nomedia inside WhatsApp Sent and Voice Notes just like real WhatsApp does on Android!
-  adb -s "$EMU_SERIAL" shell "touch '$WA_MEDIA/WhatsApp Video/Sent/.nomedia' '$WA_MEDIA/WhatsApp Voice Notes/.nomedia'"
+  # Place .nomedia inside WhatsApp Sent, Voice Notes, and Documents just like real Android!
+  adb -s "$EMU_SERIAL" shell "touch '$WA_MEDIA/WhatsApp Video/Sent/.nomedia' '$WA_MEDIA/WhatsApp Voice Notes/.nomedia' '$WA_MEDIA/WhatsApp Documents/.nomedia'"
 
   adb -s "$EMU_SERIAL" push "$SEED_DIR/PTT-20220501-WA0001.opus" "$WA_MEDIA/WhatsApp Voice Notes/202218/PTT-20220501-WA0001.opus" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/IMG_20230110_090000.jpg" "/sdcard/DCIM/Camera/IMG_20230110_090000.jpg" >/dev/null
+  adb -s "$EMU_SERIAL" push "$SEED_DIR/invoice_2023.pdf" "$WA_MEDIA/WhatsApp Documents/invoice_2023.pdf" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/REC_20230412_100000.m4a" "/sdcard/Recordings/Voice Recorder/REC_20230412_100000.m4a" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/Screenshot_20230705_110000.png" "/sdcard/Pictures/Screenshots/Screenshot_20230705_110000.png" >/dev/null
+  adb -s "$EMU_SERIAL" push "$SEED_DIR/Screen_20230901_140000.mp4" "/sdcard/Movies/Screenrecords/Screen_20230901_140000.mp4" >/dev/null
+  adb -s "$EMU_SERIAL" push "$SEED_DIR/notes_2024.txt" "/sdcard/Documents/notes_2024.txt" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/VID-20240201-WA0002.mp4" "$WA_MEDIA/WhatsApp Video/Sent/VID-20240201-WA0002.mp4" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/VID_20240315_120000.mp4" "/sdcard/DCIM/Camera/VID_20240315_120000.mp4" >/dev/null
+  adb -s "$EMU_SERIAL" push "$SEED_DIR/drone_2024.mp4" "/sdcard/DJI/Media/drone_2024.mp4" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/IMG-20250620-WA0003.jpg" "$WA_MEDIA/WhatsApp Images/IMG-20250620-WA0003.jpg" >/dev/null
   adb -s "$EMU_SERIAL" push "$SEED_DIR/random_download.jpg" "/sdcard/Download/random_download.jpg" >/dev/null
 
   adb -s "$EMU_SERIAL" shell "touch -t 202205010800.00 '$WA_MEDIA/WhatsApp Voice Notes/202218/PTT-20220501-WA0001.opus'"
   adb -s "$EMU_SERIAL" shell "touch -t 202301100900.00 /sdcard/DCIM/Camera/IMG_20230110_090000.jpg"
+  adb -s "$EMU_SERIAL" shell "touch -t 202302140930.00 '$WA_MEDIA/WhatsApp Documents/invoice_2023.pdf'"
   adb -s "$EMU_SERIAL" shell "touch -t 202304121000.00 '/sdcard/Recordings/Voice Recorder/REC_20230412_100000.m4a'"
   adb -s "$EMU_SERIAL" shell "touch -t 202307051100.00 /sdcard/Pictures/Screenshots/Screenshot_20230705_110000.png"
+  adb -s "$EMU_SERIAL" shell "touch -t 202309011400.00 /sdcard/Movies/Screenrecords/Screen_20230901_140000.mp4"
+  adb -s "$EMU_SERIAL" shell "touch -t 202401201015.00 /sdcard/Documents/notes_2024.txt"
   adb -s "$EMU_SERIAL" shell "touch -t 202402011130.00 '$WA_MEDIA/WhatsApp Video/Sent/VID-20240201-WA0002.mp4'"
   adb -s "$EMU_SERIAL" shell "touch -t 202403151200.00 /sdcard/DCIM/Camera/VID_20240315_120000.mp4"
+  adb -s "$EMU_SERIAL" shell "touch -t 202405101600.00 /sdcard/DJI/Media/drone_2024.mp4"
   adb -s "$EMU_SERIAL" shell "touch -t 202506201800.00 '$WA_MEDIA/WhatsApp Images/IMG-20250620-WA0003.jpg'"
   adb -s "$EMU_SERIAL" shell "touch -t 202101010800.00 /sdcard/Download/random_download.jpg"
   adb -s "$EMU_SERIAL" shell "content call --uri content://media/ --method scan_volume --arg external_primary" >/dev/null 2>&1 || true
@@ -181,10 +189,14 @@ verify_emulator_cleanup() {
   for f in \
     "$WA_MEDIA/WhatsApp Voice Notes/202218/PTT-20220501-WA0001.opus" \
     "/sdcard/DCIM/Camera/IMG_20230110_090000.jpg" \
+    "$WA_MEDIA/WhatsApp Documents/invoice_2023.pdf" \
     "/sdcard/Recordings/Voice Recorder/REC_20230412_100000.m4a" \
     "/sdcard/Pictures/Screenshots/Screenshot_20230705_110000.png" \
+    "/sdcard/Movies/Screenrecords/Screen_20230901_140000.mp4" \
+    "/sdcard/Documents/notes_2024.txt" \
     "$WA_MEDIA/WhatsApp Video/Sent/VID-20240201-WA0002.mp4" \
     "/sdcard/DCIM/Camera/VID_20240315_120000.mp4" \
+    "/sdcard/DJI/Media/drone_2024.mp4" \
     "$WA_MEDIA/WhatsApp Images/IMG-20250620-WA0003.jpg"; do
     if adb -s "$EMU_SERIAL" shell "test -e '$f'" 2>/dev/null; then
       echo "FAIL: Crop Mode did not delete local file $f" >&2
@@ -193,7 +205,7 @@ verify_emulator_cleanup() {
   done
 
   if ! adb -s "$EMU_SERIAL" shell "test -e '/sdcard/Download/random_download.jpg'" 2>/dev/null; then
-    echo "FAIL: Untracked Download file was unexpectedly removed!" >&2
+    echo "FAIL: Opt-in Download file was unexpectedly removed!" >&2
     exit 1
   fi
 }
@@ -216,6 +228,7 @@ DART_DEFINES=(
 cd "$REPO_ROOT/mobile"
 flutter build apk --debug --target-platform=android-x64 "${DART_DEFINES[@]}"
 adb -s "$EMU_SERIAL" install -r "$REPO_ROOT/mobile/build/app/outputs/flutter-apk/app-debug.apk"
+adb -s "$EMU_SERIAL" shell pm clear "$PKG" >/dev/null 2>&1 || true
 grant_permissions
 
 flutter test integration_test/app_e2e_test.dart -d "$EMU_SERIAL" "${DART_DEFINES[@]}"

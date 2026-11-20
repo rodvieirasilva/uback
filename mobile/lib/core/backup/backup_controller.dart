@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
+import '../config/custom_folder_config.dart';
 import 'backup_destination.dart';
 import 'image_video_media_exporter.dart';
 import 'media_exporter.dart';
@@ -12,8 +13,9 @@ import 'native_bridge.dart';
 class BackupController extends ChangeNotifier {
   final AppSettingsRepository _settingsRepo;
   final NativeBackupBridge _bridge;
+  final List<MediaSource>? _customInjectedSources;
   late final DestinationRegistry _destinations;
-  late final List<MediaSource> _mediaSources;
+  late List<MediaSource> _mediaSources;
   late final ImageVideoMediaExporter _exporter;
 
   StreamSubscription<BackupProgress>? _progressSub;
@@ -25,9 +27,6 @@ class BackupController extends ChangeNotifier {
   Map<String, MediaSourceStats> _sourceStats = const {};
   bool _estimatingStats = false;
   bool _hasEstimatedStats = false;
-  BackupMode _mode = BackupMode.copy;
-  BackupLimitType _limitType = BackupLimitType.all;
-  int _limitValue = 100;
   BackupProgress _progress = const BackupProgress();
   ConnectionTestResult? _connectionResult;
   bool _testingConnection = false;
@@ -39,9 +38,11 @@ class BackupController extends ChangeNotifier {
     required this._bridge,
     DestinationRegistry? destinations,
     List<MediaSource>? mediaSources,
-  }) {
+  }) : _customInjectedSources = mediaSources {
     _destinations = destinations ?? DestinationRegistry.defaults(_bridge);
-    _mediaSources = List.unmodifiable(mediaSources ?? defaultMediaSources(_bridge));
+    _mediaSources = List.unmodifiable(
+      mediaSources ?? buildMediaSources(_bridge, customFolders: _settings.customFolders),
+    );
     _exporter = ImageVideoMediaExporter(
       bridge: _bridge,
       settingsProvider: () => _settings,
@@ -60,15 +61,25 @@ class BackupController extends ChangeNotifier {
   Map<String, MediaSourceStats> get sourceStats => _sourceStats;
   bool get estimatingStats => _estimatingStats;
   bool get hasEstimatedStats => _hasEstimatedStats;
-  BackupMode get mode => _mode;
-  BackupLimitType get limitType => _limitType;
-  int get limitValue => _limitValue;
+  BackupMode get mode => _settings.lastMode;
+  BackupLimitType get limitType => _settings.lastLimitType;
+  int get limitValue => _settings.lastLimitValue;
+  String get lastExporterId => _settings.lastExporterId;
+  bool get mediaSourcesExpanded => _settings.mediaSourcesExpanded;
+  Set<String> get expandedSourceGroupIds => _settings.expandedSourceGroupIds;
   BackupProgress get progress => _progress;
   ConnectionTestResult? get connectionResult => _connectionResult;
   bool get testingConnection => _testingConnection;
   bool get initialized => _initialized;
   String? get statusMessage => _statusMessage;
   MediaExporter get exporter => _exporter;
+
+  void _rebuildMediaSources() {
+    if (_customInjectedSources != null) return;
+    _mediaSources = List.unmodifiable(
+      buildMediaSources(_bridge, customFolders: _settings.customFolders),
+    );
+  }
 
   Set<String> get _allRegisteredLeafIds {
     final ids = <String>{};
@@ -99,16 +110,18 @@ class BackupController extends ChangeNotifier {
   }
 
   BackupLimit? get currentLimit {
-    return switch (_limitType) {
+    return switch (limitType) {
       BackupLimitType.all => null,
-      BackupLimitType.files => BackupLimit(maxFiles: _limitValue > 0 ? _limitValue : 1),
+      BackupLimitType.files => BackupLimit(maxFiles: limitValue > 0 ? limitValue : 1),
       BackupLimitType.megabytes =>
-        BackupLimit(maxBytes: (_limitValue > 0 ? _limitValue : 1) * 1024 * 1024),
+        BackupLimit(maxBytes: (limitValue > 0 ? limitValue : 1) * 1024 * 1024),
     };
   }
 
   Future<void> init() async {
     _settings = await _settingsRepo.load();
+    _rebuildMediaSources();
+
     try {
       _detectedDeviceName = await _bridge.getDeviceName();
     } catch (_) {
@@ -145,15 +158,50 @@ class BackupController extends ChangeNotifier {
     }
   }
 
-  void setMode(BackupMode mode) {
-    if (_progress.isActive) return;
-    _mode = mode;
-    _statusMessage = null;
+  Future<void> _persistSession(AppSettings updated) async {
+    _settings = updated;
     notifyListeners();
+    await _settingsRepo.save(updated);
+  }
+
+  Future<void> setMode(BackupMode nextMode) async {
+    if (_progress.isActive) return;
+    _statusMessage = null;
+    await _persistSession(_settings.copyWith(lastMode: nextMode));
+  }
+
+  Future<void> setLimitType(BackupLimitType type) async {
+    if (_progress.isActive) return;
+    var nextVal = _settings.lastLimitValue;
+    if (type == BackupLimitType.files && nextVal <= 0) {
+      nextVal = 100;
+    } else if (type == BackupLimitType.megabytes && nextVal <= 0) {
+      nextVal = 500;
+    }
+    await _persistSession(
+      _settings.copyWith(lastLimitType: type, lastLimitValue: nextVal),
+    );
+  }
+
+  Future<void> setLimitValue(int value) async {
+    if (_progress.isActive || value <= 0) return;
+    await _persistSession(_settings.copyWith(lastLimitValue: value));
+  }
+
+  Future<void> setMediaSourcesExpanded(bool expanded) async {
+    await _persistSession(_settings.copyWith(mediaSourcesExpanded: expanded));
+  }
+
+  Future<void> toggleSourceGroupExpanded(String groupId) async {
+    final next = Set<String>.of(_settings.expandedSourceGroupIds);
+    if (!next.remove(groupId)) {
+      next.add(groupId);
+    }
+    await _persistSession(_settings.copyWith(expandedSourceGroupIds: next));
   }
 
   /// Toggles either a single leaf [MediaSource] or an entire hierarchical group
-  /// (enabling/disabling all descendant leaf IDs atomically).
+  /// and persists the selection immediately for the next session.
   Future<void> toggleSourceNode(MediaSource source, bool enabled) async {
     if (_progress.isActive) return;
     final next = Set<String>.of(_settings.enabledSourceIds);
@@ -162,27 +210,55 @@ class BackupController extends ChangeNotifier {
     } else {
       next.removeAll(source.leafIds);
     }
-    _settings = _settings.copyWith(enabledSourceIds: next);
     _statusMessage = null;
+    await _persistSession(_settings.copyWith(enabledSourceIds: next));
+
+    // If user enabled any snapshot source, proactively request its runtime permission so stats update.
+    if (enabled) {
+      final newlyEnabledSnapshots = source.leafIds.intersection(snapshotSourceIds);
+      if (newlyEnabledSnapshots.isNotEmpty) {
+        await _bridge.requestSnapshotPermissions(newlyEnabledSnapshots);
+        unawaited(refreshSourceStats());
+      }
+    }
+  }
+
+  Future<void> addCustomFolder({
+    required String relativePath,
+    String? displayName,
+  }) async {
+    final cleanPath = relativePath.trim();
+    if (cleanPath.isEmpty) return;
+    final created = CustomFolderConfig.create(
+      relativePath: cleanPath,
+      displayName: displayName,
+    );
+    final updatedFolders = [
+      ..._settings.customFolders.where((f) => f.id != created.id),
+      created,
+    ];
+    final nextEnabled = Set<String>.of(_settings.enabledSourceIds)..add(created.id);
+    _settings = _settings.copyWith(
+      customFolders: updatedFolders,
+      enabledSourceIds: nextEnabled,
+    );
+    _rebuildMediaSources();
     notifyListeners();
     await _settingsRepo.save(_settings);
+    unawaited(refreshSourceStats());
   }
 
-  void setLimitType(BackupLimitType type) {
-    if (_progress.isActive) return;
-    _limitType = type;
-    if (type == BackupLimitType.files && _limitValue <= 0) {
-      _limitValue = 100;
-    } else if (type == BackupLimitType.megabytes && _limitValue <= 0) {
-      _limitValue = 500;
-    }
+  Future<void> removeCustomFolder(String folderId) async {
+    final updatedFolders = _settings.customFolders.where((f) => f.id != folderId).toList();
+    final nextEnabled = Set<String>.of(_settings.enabledSourceIds)..remove(folderId);
+    _settings = _settings.copyWith(
+      customFolders: updatedFolders,
+      enabledSourceIds: nextEnabled,
+    );
+    _rebuildMediaSources();
     notifyListeners();
-  }
-
-  void setLimitValue(int value) {
-    if (_progress.isActive) return;
-    _limitValue = value;
-    notifyListeners();
+    await _settingsRepo.save(_settings);
+    unawaited(refreshSourceStats());
   }
 
   Future<void> refreshPermissions() async {
@@ -210,7 +286,7 @@ class BackupController extends ChangeNotifier {
     _estimatingStats = true;
     notifyListeners();
     try {
-      _sourceStats = await _bridge.getSourceStats();
+      _sourceStats = await _bridge.getSourceStats(customFolders: _settings.customFolders);
       _hasEstimatedStats = true;
     } catch (_) {
       // Keep previous estimate if query fails transiently.
@@ -222,6 +298,7 @@ class BackupController extends ChangeNotifier {
 
   Future<void> saveSettings(AppSettings updated) async {
     _settings = updated;
+    _rebuildMediaSources();
     await _settingsRepo.save(updated);
     _connectionResult = null;
     notifyListeners();
@@ -229,6 +306,7 @@ class BackupController extends ChangeNotifier {
 
   Future<AppSettings> resetSettingsToDefaults() async {
     _settings = await _settingsRepo.resetToDefaults();
+    _rebuildMediaSources();
     _connectionResult = null;
     notifyListeners();
     return _settings;
@@ -292,12 +370,22 @@ class BackupController extends ChangeNotifier {
       }
     }
 
-    if (_mode == BackupMode.crop && !_permissions.hasAllFiles) {
+    final activeSnapshots = _settings.enabledSourceIds.intersection(snapshotSourceIds);
+    if (activeSnapshots.isNotEmpty) {
+      await _bridge.requestSnapshotPermissions(activeSnapshots);
+    }
+
+    if (mode == BackupMode.crop && !_permissions.hasAllFiles) {
       _statusMessage =
           'Crop Mode requires "All files access" permission so verified files can be deleted automatically.';
       notifyListeners();
       return;
     }
+
+    // Persist last used exporter/config right as the session starts.
+    await _persistSession(
+      _settings.copyWith(lastExporterId: _exporter.id),
+    );
 
     _progress = const BackupProgress(
       state: BackupRunState.scanning,
@@ -306,8 +394,6 @@ class BackupController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Discovers per-source oldest candidates, merges across ALL enabled sources,
-      // sorts globally oldest-first, and enforces the active batch limit.
       final planned = await _exporter.discoverItems(limit: currentLimit);
 
       if (planned.isEmpty) {
@@ -339,7 +425,7 @@ class BackupController extends ChangeNotifier {
 
       await dest.startBackup(
         settings: _settings,
-        mode: _mode,
+        mode: mode,
         deviceFolder: resolvedDeviceFolder,
         items: planned,
       );

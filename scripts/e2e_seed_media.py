@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate deterministic synthetic JPEG, PNG, MP4, OPUS, and M4A test media for Emulator E2E tests."""
+"""Generate deterministic synthetic media & document test files for Emulator E2E tests."""
 
 from __future__ import annotations
 
@@ -55,9 +55,17 @@ def make_minimal_m4a(tag: bytes, extra_kb: int = 16) -> bytes:
 
 
 def make_minimal_opus(tag: bytes, extra_kb: int = 10) -> bytes:
-    # OggS header + OpusHead payload
     header = b"OggS\x00\x02" + (b"\x00" * 20) + b"\x01\x13OpusHead\x01\x01\x38\x01\x80\xbb\x00\x00\x00\x00\x00"
     return header + tag + (b"O" * (extra_kb * 1024))
+
+
+def make_minimal_pdf(tag: bytes, extra_kb: int = 8) -> bytes:
+    body = b"%PDF-1.4\n% " + tag + b"\n" + (b"P" * (extra_kb * 1024)) + b"\n%%EOF\n"
+    return body
+
+
+def make_minimal_txt(tag: bytes, extra_kb: int = 4) -> bytes:
+    return b"UBack E2E Document: " + tag + b"\n" + (b"T" * (extra_kb * 1024)) + b"\n"
 
 
 def main() -> int:
@@ -71,15 +79,19 @@ def main() -> int:
 
     video_kb = 4096 if big_mode else 256
     files = {
-        # Global oldest -> newest across ALL enabled sources:
+        # Global oldest -> newest across ALL enabled sources (11 files once DJI custom folder added):
         "PTT-20220501-WA0001.opus": make_minimal_opus(b"oldest-wa-voice-1", 10),
         "IMG_20230110_090000.jpg": make_minimal_jpeg(b"oldest-cam-img-2", 12),
-        "REC_20230412_100000.m4a": make_minimal_m4a(b"oldest-recording-3", 14),
-        "Screenshot_20230705_110000.png": make_minimal_png(b"oldest-ss-4", 16),
-        "VID-20240201-WA0002.mp4": make_minimal_mp4(b"oldest-wa-sent-vid-5", 32),
-        "VID_20240315_120000.mp4": make_minimal_mp4(b"oldest-cam-vid-6", video_kb),
-        "IMG-20250620-WA0003.jpg": make_minimal_jpeg(b"newest-wa-recv-img-7", 20),
-        # Untracked folder (Download) — MUST NOT be backed up or deleted
+        "invoice_2023.pdf": make_minimal_pdf(b"oldest-wa-doc-3", 10),
+        "REC_20230412_100000.m4a": make_minimal_m4a(b"oldest-recording-4", 14),
+        "Screenshot_20230705_110000.png": make_minimal_png(b"oldest-ss-5", 16),
+        "Screen_20230901_140000.mp4": make_minimal_mp4(b"oldest-screenrec-6", 24),
+        "notes_2024.txt": make_minimal_txt(b"oldest-doc-7", 6),
+        "VID-20240201-WA0002.mp4": make_minimal_mp4(b"oldest-wa-sent-vid-8", 32),
+        "VID_20240315_120000.mp4": make_minimal_mp4(b"oldest-cam-vid-9", video_kb),
+        "drone_2024.mp4": make_minimal_mp4(b"oldest-custom-dji-10", 28),
+        "IMG-20250620-WA0003.jpg": make_minimal_jpeg(b"newest-wa-recv-img-11", 20),
+        # Opt-in source (Download) starts unchecked by default — MUST NOT be backed up or deleted
         "random_download.jpg": make_minimal_jpeg(b"ignored-download", 10),
     }
 
