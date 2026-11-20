@@ -5,6 +5,21 @@ import '../config/custom_folder_config.dart';
 import 'media_exporter.dart';
 import 'media_source.dart';
 
+/// Result returned by Android's native Storage Access Framework folder picker.
+class FolderPickResult {
+  final String? relativePath;
+  final String? error;
+
+  const FolderPickResult({this.relativePath, this.error});
+
+  bool get hasPath => relativePath != null && relativePath!.trim().isNotEmpty;
+
+  factory FolderPickResult.fromMap(Map<Object?, Object?> map) => FolderPickResult(
+        relativePath: map['relativePath'] as String?,
+        error: map['error'] as String?,
+      );
+}
+
 /// Abstraction over the Android native Kotlin bridge (`MethodChannel` + `EventChannel`).
 /// Easily fakeable in unit and widget tests.
 abstract class NativeBackupBridge {
@@ -14,6 +29,7 @@ abstract class NativeBackupBridge {
   Future<PermissionState> requestMediaPermissions();
   Future<PermissionState> requestSnapshotPermissions(Set<String> snapshotSources);
   Future<void> openAllFilesAccessSettings();
+  Future<FolderPickResult?> pickFolder();
   Future<List<BackupItem>> discoverMedia({
     required Set<String> enabledSourceIds,
     List<CustomFolderConfig> customFolders = const [],
@@ -77,6 +93,12 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
   @override
   Future<void> openAllFilesAccessSettings() async {
     await _methodChannel.invokeMethod<void>('openAllFilesAccessSettings');
+  }
+
+  @override
+  Future<FolderPickResult?> pickFolder() async {
+    final res = await _methodChannel.invokeMapMethod<Object?, Object?>('pickFolder');
+    return res == null ? null : FolderPickResult.fromMap(res);
   }
 
   @override

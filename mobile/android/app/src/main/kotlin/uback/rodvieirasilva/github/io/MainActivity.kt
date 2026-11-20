@@ -25,6 +25,7 @@ class MainActivity : FlutterActivity() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var pendingPermissionResult: MethodChannel.Result? = null
+    private var pendingFolderPickResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -94,6 +95,26 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 result.success(true)
+            }
+
+            "pickFolder" -> {
+                pendingFolderPickResult?.success(null)
+                pendingFolderPickResult = result
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                    addFlags(
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+                    )
+                }
+                runCatching {
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(intent, PICK_FOLDER_REQUEST_CODE)
+                }.onFailure { e ->
+                    pendingFolderPickResult = null
+                    result.success(
+                        mapOf("error" to (e.message ?: "Unable to open folder picker on this device.")),
+                    )
+                }
             }
 
             "requestSnapshotPermissions" -> {
@@ -309,6 +330,28 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PICK_FOLDER_REQUEST_CODE) {
+            val pending = pendingFolderPickResult ?: return
+            pendingFolderPickResult = null
+            val uri = if (resultCode == RESULT_OK) data?.data else null
+            if (uri == null) {
+                pending.success(null)
+                return
+            }
+            when (val outcome = FolderPickerHelper.resolveTreeUri(uri)) {
+                is FolderPickOutcome.Selected -> pending.success(
+                    mapOf("relativePath" to outcome.relativePath),
+                )
+                is FolderPickOutcome.Error -> pending.success(
+                    mapOf("error" to outcome.message),
+                )
+            }
+        }
+    }
+
     override fun onDestroy() {
         scope.cancel()
         super.onDestroy()
@@ -318,5 +361,6 @@ class MainActivity : FlutterActivity() {
         private const val METHOD_CHANNEL = "uback/native"
         private const val EVENT_CHANNEL = "uback/progress"
         private const val PERM_REQUEST_CODE = 1042
+        private const val PICK_FOLDER_REQUEST_CODE = 1043
     }
 }

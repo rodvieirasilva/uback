@@ -60,6 +60,7 @@ abstract final class AppTestKeys {
   static const String settingsAllFilesPermId = 'settings_all_files_permission_btn';
   static const String settingsCustomFolderPathId = 'settings_custom_folder_path_input';
   static const String settingsCustomFolderNameId = 'settings_custom_folder_name_input';
+  static const String settingsBrowseCustomFolderId = 'settings_browse_custom_folder_btn';
   static const String settingsAddCustomFolderId = 'settings_add_custom_folder_btn';
   static String settingsRemoveCustomFolderId(String id) => 'settings_remove_custom_folder_$id';
   static ValueKey<String> settingsRemoveCustomFolder(String id) =>
@@ -113,6 +114,7 @@ abstract final class AppTestKeys {
   static const ValueKey<String> settingsAllFilesPerm = ValueKey(settingsAllFilesPermId);
   static const ValueKey<String> settingsCustomFolderPath = ValueKey(settingsCustomFolderPathId);
   static const ValueKey<String> settingsCustomFolderName = ValueKey(settingsCustomFolderNameId);
+  static const ValueKey<String> settingsBrowseCustomFolder = ValueKey(settingsBrowseCustomFolderId);
   static const ValueKey<String> settingsAddCustomFolder = ValueKey(settingsAddCustomFolderId);
 }
 

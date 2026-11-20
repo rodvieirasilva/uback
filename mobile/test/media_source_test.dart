@@ -16,7 +16,7 @@ class _NoopBridge implements NativeBackupBridge {
   }) async =>
       const [];
   @override
-  Future<String> getAppVersion() async => '1.2.0+3';
+  Future<String> getAppVersion() async => '1.2.1+4';
   @override
   Future<BackupProgress> getBackupStatus() async => const BackupProgress();
   @override
@@ -28,6 +28,8 @@ class _NoopBridge implements NativeBackupBridge {
       const {};
   @override
   Future<void> openAllFilesAccessSettings() async {}
+  @override
+  Future<FolderPickResult?> pickFolder() async => null;
   @override
   Stream<BackupProgress> progressStream() => const Stream.empty();
   @override
@@ -129,5 +131,14 @@ void main() {
     expect(whatsapp.selectionState(whatsapp.leafIds), isTrue);
     expect(whatsapp.selectionState(const {}), isFalse);
     expect(whatsapp.selectionState(const {'whatsapp.sent.videos'}), isNull);
+
+    final snapshots = sources.firstWhere((s) => s.id == 'snapshots');
+    final snapAgg = snapshots.aggregateStats({
+      'snapshots.contacts': MediaSourceStats.fromMap({'count': 1, 'totalBytes': 512, 'permissionRequired': false}),
+      'snapshots.sms': MediaSourceStats.fromMap({'count': 0, 'totalBytes': 0, 'permissionRequired': true}),
+    });
+    expect(snapAgg.fileCount, 1);
+    expect(snapAgg.totalBytes, 512);
+    expect(snapAgg.permissionRequired, isTrue);
   });
 }

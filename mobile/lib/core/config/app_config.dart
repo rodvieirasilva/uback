@@ -22,7 +22,7 @@ class CompileTimeDefaults {
   static const String e2eDeviceOverride =
       String.fromEnvironment('UBACK_E2E_DEVICE_OVERRIDE', defaultValue: '');
   static const String appVersion =
-      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.0+3');
+      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.1+4');
 
   static AppSettings toSettings() {
     return AppSettings(

@@ -299,6 +299,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 24),
                 CustomFoldersSection(
                   folders: ctrl.settings.customFolders,
+                  onBrowse: ctrl.pickCustomFolder,
                   onAdd: (path, name) => ctrl.addCustomFolder(relativePath: path, displayName: name),
                   onRemove: ctrl.removeCustomFolder,
                 ),

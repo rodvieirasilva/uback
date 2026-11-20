@@ -176,11 +176,42 @@ seed_emulator_media() {
   sleep 3
 }
 
+seed_emulator_snapshots() {
+  echo "==> Seeding synthetic Contact, SMS, and Call Log for Device Snapshots E2E..."
+  # 1. Seed synthetic Contact via ContactsContract
+  adb -s "$EMU_SERIAL" shell "content delete --uri content://com.android.contacts/raw_contacts --where \"account_name='uback_e2e'\"" >/dev/null 2>&1 || true
+  adb -s "$EMU_SERIAL" shell "content insert --uri content://com.android.contacts/raw_contacts --bind account_name:s:uback_e2e --bind account_type:s:com.uback.e2e" >/dev/null
+  local raw_id
+  raw_id="$(adb -s "$EMU_SERIAL" shell "content query --uri content://com.android.contacts/raw_contacts --projection _id --where \"account_name='uback_e2e'\"" | sed -n 's/.*_id=\([0-9][0-9]*\).*/\1/p' | tail -n 1 | tr -d '\r')"
+  if [[ -z "$raw_id" ]]; then
+    echo "FAIL: Could not seed synthetic raw_contact on emulator" >&2
+    exit 1
+  fi
+  adb -s "$EMU_SERIAL" shell "content insert --uri content://com.android.contacts/data --bind raw_contact_id:i:$raw_id --bind mimetype:s:vnd.android.cursor.item/name --bind 'data1:s:UBack Test Contact'" >/dev/null
+  adb -s "$EMU_SERIAL" shell "content insert --uri content://com.android.contacts/data --bind raw_contact_id:i:$raw_id --bind mimetype:s:vnd.android.cursor.item/phone_v2 --bind data1:s:+15550109999 --bind data2:i:2" >/dev/null
+
+  # 2. Seed synthetic SMS via Emulator telephony console
+  adb -s "$EMU_SERIAL" emu sms send 5550101234 "UBack E2E SMS Payload" >/dev/null
+  for _ in $(seq 1 15); do
+    if adb -s "$EMU_SERIAL" shell "content query --uri content://sms --projection body" 2>/dev/null | grep -q "UBack E2E SMS Payload"; then
+      break
+    fi
+    sleep 1
+  done
+
+  # 3. Seed synthetic Call Log entry
+  adb -s "$EMU_SERIAL" shell "content delete --uri content://call_log/calls --where \"number='5550109876'\"" >/dev/null 2>&1 || true
+  adb -s "$EMU_SERIAL" shell "content insert --uri content://call_log/calls --bind number:s:5550109876 --bind date:l:1700000000000 --bind duration:i:42 --bind type:i:1" >/dev/null
+}
+
 grant_permissions() {
   adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 || true
   adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.READ_MEDIA_VIDEO >/dev/null 2>&1 || true
   adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.READ_MEDIA_AUDIO >/dev/null 2>&1 || true
   adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
+  adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.READ_CONTACTS >/dev/null 2>&1 || true
+  adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.READ_SMS >/dev/null 2>&1 || true
+  adb -s "$EMU_SERIAL" shell pm grant "$PKG" android.permission.READ_CALL_LOG >/dev/null 2>&1 || true
   adb -s "$EMU_SERIAL" shell appops set "$PKG" MANAGE_EXTERNAL_STORAGE allow >/dev/null 2>&1 || true
 }
 
@@ -208,11 +239,27 @@ verify_emulator_cleanup() {
     echo "FAIL: Opt-in Download file was unexpectedly removed!" >&2
     exit 1
   fi
+
+  # Verify Crop Mode NEVER deleted real Contacts, SMS, or Call Logs
+  if ! adb -s "$EMU_SERIAL" shell "content query --uri content://com.android.contacts/data --projection data1" 2>/dev/null | grep -q "UBack Test Contact"; then
+    echo "FAIL: Crop Mode unexpectedly affected Contacts!" >&2
+    exit 1
+  fi
+  if ! adb -s "$EMU_SERIAL" shell "content query --uri content://sms --projection body" 2>/dev/null | grep -q "UBack E2E SMS Payload"; then
+    echo "FAIL: Crop Mode unexpectedly affected SMS!" >&2
+    exit 1
+  fi
+  if ! adb -s "$EMU_SERIAL" shell "content query --uri content://call_log/calls --projection number" 2>/dev/null | grep -q "5550109876"; then
+    echo "FAIL: Crop Mode unexpectedly affected Call Logs!" >&2
+    exit 1
+  fi
+  echo "OK: Crop Mode left opt-in Downloads, Contacts, SMS, and Call Logs intact on device."
 }
 
 ensure_emulator
 start_smb_server
 seed_emulator_media
+seed_emulator_snapshots
 
 DART_DEFINES=(
   "--dart-define=UBACK_SMB_HOST=10.0.2.2"

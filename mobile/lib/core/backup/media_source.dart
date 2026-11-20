@@ -6,20 +6,24 @@ import 'native_bridge.dart';
 class MediaSourceStats {
   final int fileCount;
   final int totalBytes;
+  final bool permissionRequired;
 
   const MediaSourceStats({
     this.fileCount = 0,
     this.totalBytes = 0,
+    this.permissionRequired = false,
   });
 
   factory MediaSourceStats.fromMap(Map<Object?, Object?> map) => MediaSourceStats(
         fileCount: (map['count'] as num?)?.toInt() ?? 0,
         totalBytes: (map['totalBytes'] as num?)?.toInt() ?? 0,
+        permissionRequired: (map['permissionRequired'] as bool?) ?? false,
       );
 
   MediaSourceStats operator +(MediaSourceStats other) => MediaSourceStats(
         fileCount: fileCount + other.fileCount,
         totalBytes: totalBytes + other.totalBytes,
+        permissionRequired: permissionRequired || other.permissionRequired,
       );
 }
 

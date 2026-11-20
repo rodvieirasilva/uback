@@ -29,7 +29,7 @@ class _FakeBridge implements NativeBackupBridge {
   Future<String> getDeviceName() async => 'Pixel Phone';
 
   @override
-  Future<String> getAppVersion() async => '1.2.0+3';
+  Future<String> getAppVersion() async => '1.2.1+4';
 
   @override
   Future<PermissionState> checkPermissions() async =>
@@ -46,6 +46,9 @@ class _FakeBridge implements NativeBackupBridge {
 
   @override
   Future<void> openAllFilesAccessSettings() async {}
+
+  @override
+  Future<FolderPickResult?> pickFolder() async => null;
 
   @override
   Future<List<BackupItem>> discoverMedia({
@@ -117,6 +120,9 @@ class _FakeBridge implements NativeBackupBridge {
             'camera.videos': MediaSourceStats(fileCount: 1, totalBytes: 4096),
             'whatsapp.sent.audios': MediaSourceStats(fileCount: 1, totalBytes: 2048),
             'recordings': MediaSourceStats(fileCount: 1, totalBytes: 3072),
+            'snapshots.contacts': MediaSourceStats(permissionRequired: true),
+            'snapshots.sms': MediaSourceStats(permissionRequired: true),
+            'snapshots.call_logs': MediaSourceStats(permissionRequired: true),
           }),
     };
     for (final folder in customFolders) {
@@ -202,7 +208,7 @@ void main() {
     // Destination oldest-first banner removed; logo + version present; zero phase jargon; zero file previews
     expect(find.textContaining('DESTINATION (OLDEST FIRST'), findsNothing);
     expect(find.byKey(AppTestKeys.appLogo), findsOneWidget);
-    expect(find.text('UBack v1.2.0+3'), findsOneWidget);
+    expect(find.text('UBack v1.2.1+4'), findsOneWidget);
     expect(find.textContaining('Phase'), findsNothing);
     expect(find.textContaining('PHASE'), findsNothing);
     final fileImages = find.byWidgetPredicate((w) => w is Image && w.image is FileImage);
@@ -239,6 +245,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(AppTestKeys.sourceToggle('whatsapp.sent.audios')), findsOneWidget);
     expect(find.byKey(AppTestKeys.sourceToggle('whatsapp.sent.documents')), findsOneWidget);
+
+    // Device Snapshots shows clear permission indicator before permissions are granted
+    expect(
+      tester.widget<Text>(find.byKey(AppTestKeys.sourceStats('snapshots'))).data,
+      'Permission required • Toggle to grant',
+    );
 
     // Enabling Device Snapshots triggers snapshot permission request
     await tester.ensureVisible(find.byKey(AppTestKeys.sourceToggle('snapshots')));

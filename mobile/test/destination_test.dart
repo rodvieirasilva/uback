@@ -66,7 +66,7 @@ class _StubBridge implements NativeBackupBridge {
         ),
       ];
   @override
-  Future<String> getAppVersion() async => '1.2.0+3';
+  Future<String> getAppVersion() async => '1.2.1+4';
   @override
   Future<BackupProgress> getBackupStatus() async => const BackupProgress();
   @override
@@ -78,6 +78,8 @@ class _StubBridge implements NativeBackupBridge {
       const {};
   @override
   Future<void> openAllFilesAccessSettings() async {}
+  @override
+  Future<FolderPickResult?> pickFolder() async => null;
   @override
   Stream<BackupProgress> progressStream() => const Stream.empty();
   @override
