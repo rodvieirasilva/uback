@@ -85,9 +85,16 @@ def main() -> int:
     if download_hits:
         raise SystemExit(f"FAIL: Opt-in Download file should NOT have been backed up: {download_hits}")
 
+    dup_hits = list(dest_root.rglob("*_DUP*"))
+    if dup_hits:
+        raise SystemExit(
+            f"FAIL: Duplicate-hash file should NOT have been copied to SMB: {dup_hits}"
+        )
+
     print(
-        f"OK: All {len(EXPECTED_RELATIVE_PATHS)} media/doc/custom files + 3 Device Snapshots "
-        "(Contacts, SMS, Call Logs) verified, zero .uback.tmp leftovers, opt-in Download excluded."
+        f"OK: All {len(EXPECTED_RELATIVE_PATHS)} unique media/doc/custom files + 3 Device Snapshots "
+        "(Contacts, SMS, Call Logs) verified, duplicate-hash skipped (0 duplicate copies), "
+        "zero .uback.tmp leftovers, opt-in Download excluded."
     )
     return 0
 

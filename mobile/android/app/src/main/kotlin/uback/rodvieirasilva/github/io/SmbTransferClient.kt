@@ -134,24 +134,27 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         onStage: (String) -> Unit,
         onBytesProgress: (Long) -> Unit,
         isCancelled: () -> Boolean,
+        waitIfPaused: () -> Unit = {},
         maxAttempts: Int = 3,
     ): TransferResult {
         require(localFile.exists() && localFile.isFile) { "Local file not found: ${localFile.path}" }
         val localSize = localFile.length()
         require(localSize > 0L) { "Refusing to back up empty file: ${localFile.path}" }
 
+        waitIfPaused()
         onStage("hashing")
-        val localSha256 = computeLocalSha256(localFile, isCancelled)
+        val localSha256 = computeLocalSha256(localFile, isCancelled, waitIfPaused)
         val normDir = normalizeSmbPath(remoteDirRel)
 
         var lastError: Throwable? = null
         for (attempt in 1..maxAttempts) {
+            waitIfPaused()
             if (isCancelled()) throw InterruptedException("Backup cancelled")
             try {
                 val share = ensureConnected()
                 ensureDirectories(share, normDir)
 
-                // Step 2: Pre-flight check & collision resolution
+                // Step 2: Pre-flight check & content-hash deduplication / collision resolution
                 val targetName = resolveTargetFileName(
                     share = share,
                     normDir = normDir,
@@ -160,10 +163,15 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                     localSha256 = localSha256,
                     onStage = onStage,
                     isCancelled = isCancelled,
+                    waitIfPaused = waitIfPaused,
                 )
 
                 val targetPath = joinSmbPath(normDir, targetName.fileName)
                 if (targetName.alreadyVerified) {
+                    android.util.Log.i(
+                        "UBack",
+                        "Skipped $fileName — SHA-256 already matched remote ${targetName.fileName} (0 bytes copied)",
+                    )
                     onBytesProgress(localSize)
                     return TransferResult(
                         outcome = TransferOutcome.SKIPPED_ALREADY_VERIFIED,
@@ -179,11 +187,13 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                     runCatching { share.rm(tempPath) }
                 }
 
+                waitIfPaused()
                 onStage("uploading")
                 android.util.Log.i("UBack", "Uploading $fileName -> $tempPath ($localSize bytes)")
-                uploadStream(share, localFile, tempPath, onBytesProgress, isCancelled)
+                uploadStream(share, localFile, tempPath, onBytesProgress, isCancelled, waitIfPaused)
 
                 // Step 4: Mandatory full SHA-256 read-back verification (ALWAYS ON)
+                waitIfPaused()
                 onStage("verifying")
                 android.util.Log.i("UBack", "Checking remote size for $tempPath")
                 val remoteTempSize = getRemoteFileSize(share, tempPath)
@@ -195,7 +205,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                 }
 
                 android.util.Log.i("UBack", "Reading back SHA-256 for $tempPath ($remoteTempSize bytes)")
-                val remoteSha256 = computeRemoteSha256(share, tempPath, remoteTempSize, isCancelled)
+                val remoteSha256 = computeRemoteSha256(share, tempPath, remoteTempSize, isCancelled, waitIfPaused)
                 if (!remoteSha256.equals(localSha256, ignoreCase = true)) {
                     runCatching { share.rm(tempPath) }
                     throw IllegalStateException(
@@ -237,6 +247,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
                 android.util.Log.w("UBack", "Attempt $attempt/$maxAttempts failed for $fileName", e)
                 lastError = e
                 if (attempt < maxAttempts && !isCancelled()) {
+                    waitIfPaused()
                     onStage("retrying")
                     runCatching { close() }
                     val backoffMs = 1000L * (1L shl (attempt - 1))
@@ -260,35 +271,94 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         localSha256: String,
         onStage: (String) -> Unit,
         isCancelled: () -> Boolean,
+        waitIfPaused: () -> Unit,
     ): TargetResolution {
+        val checkedNames = HashSet<String>()
         val candidatePath = joinSmbPath(normDir, originalFileName)
-        if (!safeFileExists(share, candidatePath)) {
-            return TargetResolution(originalFileName, alreadyVerified = false)
-        }
-
-        // Existing file found — verify size + full SHA-256 before trusting it!
-        onStage("verifying")
-        val existingSize = getRemoteFileSize(share, candidatePath)
-        if (existingSize == localSize) {
-            val existingHash = computeRemoteSha256(share, candidatePath, existingSize, isCancelled)
-            if (existingHash.equals(localSha256, ignoreCase = true)) {
-                return TargetResolution(originalFileName, alreadyVerified = true)
-            }
-        }
-
-        // Collision with different content: disambiguate with short SHA-256 suffix.
-        val disambiguated = disambiguateFileName(originalFileName, localSha256.take(8))
-        val disambPath = joinSmbPath(normDir, disambiguated)
-        if (safeFileExists(share, disambPath)) {
-            val disambSize = getRemoteFileSize(share, disambPath)
-            if (disambSize == localSize) {
-                val disambHash = computeRemoteSha256(share, disambPath, disambSize, isCancelled)
-                if (disambHash.equals(localSha256, ignoreCase = true)) {
-                    return TargetResolution(disambiguated, alreadyVerified = true)
+        val originalExists = safeFileExists(share, candidatePath)
+        if (originalExists) {
+            checkedNames.add(originalFileName.lowercase())
+            // Existing file found — verify size + full SHA-256 before trusting it!
+            onStage("verifying")
+            val existingSize = getRemoteFileSize(share, candidatePath)
+            if (existingSize == localSize) {
+                val existingHash = computeRemoteSha256(share, candidatePath, existingSize, isCancelled, waitIfPaused)
+                if (existingHash.equals(localSha256, ignoreCase = true)) {
+                    return TargetResolution(originalFileName, alreadyVerified = true)
                 }
             }
         }
-        return TargetResolution(disambiguated, alreadyVerified = false)
+
+        // Check disambiguated filename if original had different content
+        val disambiguated = disambiguateFileName(originalFileName, localSha256.take(8))
+        if (originalExists) {
+            checkedNames.add(disambiguated.lowercase())
+            val disambPath = joinSmbPath(normDir, disambiguated)
+            if (safeFileExists(share, disambPath)) {
+                onStage("verifying")
+                val disambSize = getRemoteFileSize(share, disambPath)
+                if (disambSize == localSize) {
+                    val disambHash = computeRemoteSha256(share, disambPath, disambSize, isCancelled, waitIfPaused)
+                    if (disambHash.equals(localSha256, ignoreCase = true)) {
+                        return TargetResolution(disambiguated, alreadyVerified = true)
+                    }
+                }
+            }
+        }
+
+        // Content-hash deduplication: never copy a file if another file in the same
+        // destination folder already has the exact same size and SHA-256 hash.
+        val existingMatch = findMatchingHashInDirectory(
+            share = share,
+            normDir = normDir,
+            localSize = localSize,
+            localSha256 = localSha256,
+            skipLowerNames = checkedNames,
+            onStage = onStage,
+            isCancelled = isCancelled,
+            waitIfPaused = waitIfPaused,
+        )
+        if (existingMatch != null) {
+            return TargetResolution(existingMatch, alreadyVerified = true)
+        }
+
+        return TargetResolution(
+            fileName = if (originalExists) disambiguated else originalFileName,
+            alreadyVerified = false,
+        )
+    }
+
+    private fun findMatchingHashInDirectory(
+        share: DiskShare,
+        normDir: String,
+        localSize: Long,
+        localSha256: String,
+        skipLowerNames: Set<String>,
+        onStage: (String) -> Unit,
+        isCancelled: () -> Boolean,
+        waitIfPaused: () -> Unit,
+    ): String? {
+        val entries = runCatching { share.list(normDir) }.getOrNull() ?: return null
+        for (entry in entries) {
+            waitIfPaused()
+            if (isCancelled()) throw InterruptedException("Backup cancelled during hash check")
+            val name = entry.fileName ?: continue
+            if (name == "." || name == ".." || name.endsWith(".uback.tmp")) continue
+            if (name.lowercase() in skipLowerNames) continue
+            val isDir = (entry.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
+            if (isDir) continue
+            if (entry.endOfFile != localSize) continue
+
+            onStage("verifying")
+            val remotePath = joinSmbPath(normDir, name)
+            val hash = runCatching {
+                computeRemoteSha256(share, remotePath, localSize, isCancelled, waitIfPaused)
+            }.getOrNull() ?: continue
+            if (hash.equals(localSha256, ignoreCase = true)) {
+                return name
+            }
+        }
+        return null
     }
 
     private fun uploadStream(
@@ -297,6 +367,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         remotePath: String,
         onBytesProgress: (Long) -> Unit,
         isCancelled: () -> Boolean,
+        waitIfPaused: () -> Unit,
     ) {
         val buffer = ByteArray(BUFFER_SIZE)
         var uploaded = 0L
@@ -312,6 +383,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
             remoteFile.outputStream.use { out ->
                 FileInputStream(localFile).use { input ->
                     while (true) {
+                        waitIfPaused()
                         if (isCancelled()) {
                             runCatching { remoteFile.deleteOnClose() }
                             throw InterruptedException("Backup cancelled during upload")
@@ -337,6 +409,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         remotePath: String,
         expectedSize: Long,
         isCancelled: () -> Boolean,
+        waitIfPaused: () -> Unit,
     ): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(BUFFER_SIZE)
@@ -350,6 +423,7 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         ).use { remoteFile ->
             var offset = 0L
             while (offset < expectedSize) {
+                waitIfPaused()
                 if (isCancelled()) throw InterruptedException("Backup cancelled during verification")
                 val toRead = minOf(buffer.size.toLong(), expectedSize - offset).toInt()
                 val read = remoteFile.read(buffer, offset, 0, toRead)
@@ -365,11 +439,16 @@ class SmbTransferClient(private val config: SmbConnectionConfig) : AutoCloseable
         return digest.digest().toHexString()
     }
 
-    private fun computeLocalSha256(localFile: File, isCancelled: () -> Boolean): String {
+    private fun computeLocalSha256(
+        localFile: File,
+        isCancelled: () -> Boolean,
+        waitIfPaused: () -> Unit,
+    ): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(BUFFER_SIZE)
         FileInputStream(localFile).use { input ->
             while (true) {
+                waitIfPaused()
                 if (isCancelled()) throw InterruptedException("Backup cancelled during hashing")
                 val read = input.read(buffer)
                 if (read <= 0) break

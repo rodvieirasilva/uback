@@ -29,7 +29,7 @@ class _FakeBridge implements NativeBackupBridge {
   Future<String> getDeviceName() async => 'Pixel Phone';
 
   @override
-  Future<String> getAppVersion() async => '1.2.2';
+  Future<String> getAppVersion() async => '1.2.3';
 
   @override
   Future<PermissionState> checkPermissions() async =>
@@ -165,6 +165,12 @@ class _FakeBridge implements NativeBackupBridge {
   }
 
   @override
+  Future<void> pauseBackup() async {}
+
+  @override
+  Future<void> resumeBackup() async {}
+
+  @override
   Future<void> stopBackup() async {}
 
   @override
@@ -208,7 +214,7 @@ void main() {
     // Destination oldest-first banner removed; logo + version present; zero phase jargon; zero file previews
     expect(find.textContaining('DESTINATION (OLDEST FIRST'), findsNothing);
     expect(find.byKey(AppTestKeys.appLogo), findsOneWidget);
-    expect(find.text('UBack v1.2.2'), findsOneWidget);
+    expect(find.text('UBack v1.2.3'), findsOneWidget);
     expect(find.textContaining('Phase'), findsNothing);
     expect(find.textContaining('PHASE'), findsNothing);
     final fileImages = find.byWidgetPredicate((w) => w is Image && w.image is FileImage);

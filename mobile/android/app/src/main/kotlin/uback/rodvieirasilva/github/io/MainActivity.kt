@@ -242,8 +242,26 @@ class MainActivity : FlutterActivity() {
                 result.success(true)
             }
 
+            "pauseBackup" -> {
+                BackupSessionBus.requestPause()
+                val intent = Intent(this, BackupForegroundService::class.java).apply {
+                    action = BackupForegroundService.ACTION_PAUSE
+                }
+                runCatching { startService(intent) }
+                result.success(true)
+            }
+
+            "resumeBackup" -> {
+                BackupSessionBus.requestResume()
+                val intent = Intent(this, BackupForegroundService::class.java).apply {
+                    action = BackupForegroundService.ACTION_RESUME
+                }
+                runCatching { startService(intent) }
+                result.success(true)
+            }
+
             "stopBackup" -> {
-                BackupSessionBus.cancelRequested.set(true)
+                BackupSessionBus.requestCancel()
                 val intent = Intent(this, BackupForegroundService::class.java).apply {
                     action = BackupForegroundService.ACTION_STOP
                 }

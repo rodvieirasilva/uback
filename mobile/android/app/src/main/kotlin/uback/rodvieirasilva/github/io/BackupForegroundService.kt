@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +59,51 @@ object BackupSessionBus {
 
     val isRunning = AtomicBoolean(false)
     val cancelRequested = AtomicBoolean(false)
+    val pauseRequested = AtomicBoolean(false)
+    private val pauseLock = Object()
+
+    fun requestPause() {
+        if (!isRunning.get() || cancelRequested.get()) return
+        pauseRequested.set(true)
+        val snap = latestEvent.toMutableMap()
+        if (snap["state"] == "running") {
+            snap["state"] = "paused"
+            snap["stage"] = "paused"
+            emit(snap)
+        }
+        synchronized(pauseLock) { pauseLock.notifyAll() }
+    }
+
+    fun requestResume() {
+        pauseRequested.set(false)
+        val snap = latestEvent.toMutableMap()
+        if (snap["state"] == "paused") {
+            snap["state"] = "running"
+            snap["stage"] = "resuming"
+            emit(snap)
+        }
+        synchronized(pauseLock) { pauseLock.notifyAll() }
+    }
+
+    fun requestCancel() {
+        cancelRequested.set(true)
+        pauseRequested.set(false)
+        synchronized(pauseLock) { pauseLock.notifyAll() }
+    }
+
+    fun waitIfPaused(onEnterPaused: () -> Unit, onResumed: () -> Unit) {
+        if (!pauseRequested.get()) return
+        onEnterPaused()
+        synchronized(pauseLock) {
+            while (pauseRequested.get() && !cancelRequested.get()) {
+                runCatching { pauseLock.wait(250L) }
+            }
+        }
+        if (cancelRequested.get()) {
+            throw InterruptedException("Backup cancelled while paused")
+        }
+        onResumed()
+    }
 
     fun idleState(): Map<String, Any?> = mapOf(
         "state" to "idle",
@@ -69,6 +115,8 @@ object BackupSessionBus {
         "remaining" to 0,
         "bytesTransferred" to 0L,
         "totalBytes" to 0L,
+        "elapsedMs" to 0L,
+        "etaMs" to -1L,
         "currentFile" to "",
         "errors" to emptyList<Map<String, String>>(),
     )
@@ -98,9 +146,19 @@ class BackupForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            BackupSessionBus.cancelRequested.set(true)
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                BackupSessionBus.requestCancel()
+                return START_NOT_STICKY
+            }
+            ACTION_PAUSE -> {
+                BackupSessionBus.requestPause()
+                return START_NOT_STICKY
+            }
+            ACTION_RESUME -> {
+                BackupSessionBus.requestResume()
+                return START_NOT_STICKY
+            }
         }
 
         val request = BackupSessionBus.pendingRequest
@@ -147,6 +205,7 @@ class BackupForegroundService : Service() {
     private fun runBackup(request: BackupJobRequest) {
         BackupSessionBus.isRunning.set(true)
         BackupSessionBus.cancelRequested.set(false)
+        BackupSessionBus.pauseRequested.set(false)
 
         val total = request.items.size
         val totalBytes = request.items.sumOf { it.sizeBytes }
@@ -155,6 +214,30 @@ class BackupForegroundService : Service() {
         var failed = 0
         var completedBytes = 0L
         val errors = mutableListOf<Map<String, String>>()
+        var activeElapsedMs = 0L
+        var activeSegmentStartMs = SystemClock.elapsedRealtime()
+
+        fun currentElapsedMs(): Long {
+            val runningDelta = if (activeSegmentStartMs > 0L) {
+                (SystemClock.elapsedRealtime() - activeSegmentStartMs).coerceAtLeast(0L)
+            } else {
+                0L
+            }
+            return activeElapsedMs + runningDelta
+        }
+
+        fun pauseTimer() {
+            if (activeSegmentStartMs > 0L) {
+                activeElapsedMs += (SystemClock.elapsedRealtime() - activeSegmentStartMs).coerceAtLeast(0L)
+                activeSegmentStartMs = 0L
+            }
+        }
+
+        fun resumeTimer() {
+            if (activeSegmentStartMs == 0L) {
+                activeSegmentStartMs = SystemClock.elapsedRealtime()
+            }
+        }
 
         fun emitProgress(
             state: String,
@@ -165,6 +248,19 @@ class BackupForegroundService : Service() {
             val done = transferred + skipped + failed
             val remaining = (total - done).coerceAtLeast(0)
             val bytesNow = (completedBytes + inFlightBytes).coerceAtMost(totalBytes)
+            val elapsedMs = currentElapsedMs()
+            val etaMs = when {
+                state == "completed" -> 0L
+                state == "running" && elapsedMs >= 800L && bytesNow > 0L && totalBytes > bytesNow -> {
+                    val bytesPerMs = bytesNow.toDouble() / elapsedMs.toDouble()
+                    if (bytesPerMs > 0.0) {
+                        ((totalBytes - bytesNow) / bytesPerMs).toLong().coerceAtLeast(0L)
+                    } else {
+                        -1L
+                    }
+                }
+                else -> -1L
+            }
             BackupSessionBus.emit(
                 mapOf(
                     "state" to state,
@@ -176,6 +272,8 @@ class BackupForegroundService : Service() {
                     "remaining" to remaining,
                     "bytesTransferred" to bytesNow,
                     "totalBytes" to totalBytes,
+                    "elapsedMs" to elapsedMs,
+                    "etaMs" to etaMs,
                     "currentFile" to currentFile,
                     "errors" to errors.toList(),
                 ),
@@ -198,18 +296,28 @@ class BackupForegroundService : Service() {
                 "verifying" -> "Verifying SHA-256 read-back"
                 "cleaning_up" -> "Freeing local space"
                 "retrying" -> "Retrying SMB transfer"
+                "paused" -> "Paused — tap Resume to continue"
+                "resuming" -> "Resuming transfer"
                 else -> stage.replaceFirstChar { it.uppercase() }
             }
-            val summary = "$done / $total • $remaining remaining (${formatBytes(bytesNow)} / ${formatBytes(totalBytes)})"
+            val timingSuffix = if (etaMs >= 0L && state == "running") {
+                " • Elapsed ${formatDuration(elapsedMs)} • ETA ~${formatDuration(etaMs)}"
+            } else if (elapsedMs > 0L) {
+                " • Elapsed ${formatDuration(elapsedMs)}"
+            } else {
+                ""
+            }
+            val summary = "$done / $total • $remaining remaining (${formatBytes(bytesNow)} / ${formatBytes(totalBytes)})$timingSuffix"
             val detail = if (currentFile.isNotBlank()) "$stageLabel: $currentFile" else stageLabel
 
-            if (state == "running") {
+            if (state == "running" || state == "paused") {
                 updateProgressNotification(
-                    title = "UBack • $modeVerb media ($pct%)",
+                    title = if (state == "paused") "UBack • Backup paused ($pct%)" else "UBack • $modeVerb media ($pct%)",
                     summary = summary,
                     detail = detail,
                     permille = permille,
                     indeterminate = total == 0,
+                    isPaused = state == "paused",
                 )
             } else if (state == "completed" || state == "cancelled" || state == "error") {
                 postCompletionNotification(
@@ -229,6 +337,24 @@ class BackupForegroundService : Service() {
             val zone = ZoneId.systemDefault()
 
             for (item in request.items) {
+                val pauseGate = {
+                    BackupSessionBus.waitIfPaused(
+                        onEnterPaused = {
+                            pauseTimer()
+                            emitProgress(state = "paused", stage = "paused", currentFile = item.fileName)
+                        },
+                        onResumed = {
+                            resumeTimer()
+                            emitProgress(state = "running", stage = "resuming", currentFile = item.fileName)
+                        },
+                    )
+                }
+                try {
+                    pauseGate()
+                } catch (_: InterruptedException) {
+                    emitProgress(state = "cancelled", stage = "cancelled", currentFile = item.fileName)
+                    return
+                }
                 if (BackupSessionBus.cancelRequested.get()) {
                     emitProgress(state = "cancelled", stage = "cancelled", currentFile = item.fileName)
                     return
@@ -267,6 +393,7 @@ class BackupForegroundService : Service() {
                             )
                         },
                         isCancelled = { BackupSessionBus.cancelRequested.get() },
+                        waitIfPaused = pauseGate,
                     )
 
                     // Snapshot temp files live in app cache — always remove temp file after verified upload,
@@ -363,6 +490,18 @@ class BackupForegroundService : Service() {
         )
     }
 
+    private fun pauseResumePendingIntent(isPaused: Boolean): PendingIntent {
+        val intent = Intent(this, BackupForegroundService::class.java).apply {
+            action = if (isPaused) ACTION_RESUME else ACTION_PAUSE
+        }
+        return PendingIntent.getService(
+            this,
+            if (isPaused) 3 else 2,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     private fun stopActionPendingIntent(): PendingIntent {
         val intent = Intent(this, BackupForegroundService::class.java).apply {
             action = ACTION_STOP
@@ -381,6 +520,7 @@ class BackupForegroundService : Service() {
         detail: String,
         permille: Int,
         indeterminate: Boolean,
+        isPaused: Boolean = false,
     ): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
@@ -395,7 +535,12 @@ class BackupForegroundService : Service() {
             .setSilent(true)
             .setProgress(1000, permille, indeterminate)
             .addAction(
-                android.R.drawable.ic_media_pause,
+                if (isPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause,
+                if (isPaused) "Resume" else "Pause",
+                pauseResumePendingIntent(isPaused),
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
                 "Stop",
                 stopActionPendingIntent(),
             )
@@ -408,11 +553,12 @@ class BackupForegroundService : Service() {
         detail: String,
         permille: Int,
         indeterminate: Boolean,
+        isPaused: Boolean = false,
     ) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(
             NOTIFICATION_ID,
-            buildProgressNotification(title, summary, detail, permille, indeterminate),
+            buildProgressNotification(title, summary, detail, permille, indeterminate, isPaused),
         )
     }
 
@@ -452,6 +598,18 @@ class BackupForegroundService : Service() {
         return if (idx == 0) "$bytes B" else "%.1f %s".format(v, units[idx])
     }
 
+    private fun formatDuration(ms: Long): String {
+        val totalSec = (ms / 1000L).coerceAtLeast(0L)
+        val hours = totalSec / 3600L
+        val mins = (totalSec % 3600L) / 60L
+        val secs = totalSec % 60L
+        return if (hours > 0L) {
+            "%d:%02d:%02d".format(hours, mins, secs)
+        } else {
+            "%02d:%02d".format(mins, secs)
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun acquireLocks() {
         runCatching {
@@ -482,7 +640,7 @@ class BackupForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        BackupSessionBus.cancelRequested.set(true)
+        BackupSessionBus.requestCancel()
         serviceScope.cancel()
         releaseLocks()
         super.onDestroy()
@@ -490,6 +648,8 @@ class BackupForegroundService : Service() {
 
     companion object {
         const val ACTION_START = "uback.rodvieirasilva.github.io.ACTION_START"
+        const val ACTION_PAUSE = "uback.rodvieirasilva.github.io.ACTION_PAUSE"
+        const val ACTION_RESUME = "uback.rodvieirasilva.github.io.ACTION_RESUME"
         const val ACTION_STOP = "uback.rodvieirasilva.github.io.ACTION_STOP"
         private const val CHANNEL_ID = "uback_backup_channel"
         private const val NOTIFICATION_ID = 4201

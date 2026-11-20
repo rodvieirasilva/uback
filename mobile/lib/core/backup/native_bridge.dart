@@ -45,6 +45,8 @@ abstract class NativeBackupBridge {
     required String deviceFolder,
     required List<BackupItem> items,
   });
+  Future<void> pauseBackup();
+  Future<void> resumeBackup();
   Future<void> stopBackup();
   Future<BackupProgress> getBackupStatus();
   Stream<BackupProgress> progressStream();
@@ -172,6 +174,16 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
       'deviceFolder': deviceFolder,
       'items': items.map((e) => e.toMap()).toList(),
     });
+  }
+
+  @override
+  Future<void> pauseBackup() async {
+    await _methodChannel.invokeMethod<void>('pauseBackup');
+  }
+
+  @override
+  Future<void> resumeBackup() async {
+    await _methodChannel.invokeMethod<void>('resumeBackup');
   }
 
   @override

@@ -91,4 +91,18 @@ abstract final class PathSanitizer {
     if (idx == 0) return '$bytes B';
     return '${value.toStringAsFixed(value >= 100 ? 0 : 1)} ${units[idx]}';
   }
+
+  /// Formats durations cleanly as `MM:SS` or `H:MM:SS` for elapsed time and ETA.
+  static String formatDuration(int milliseconds) {
+    final totalSeconds = milliseconds <= 0 ? 0 : milliseconds ~/ 1000;
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+    final mm = minutes.toString().padLeft(2, '0');
+    final ss = seconds.toString().padLeft(2, '0');
+    if (hours > 0) {
+      return '$hours:$mm:$ss';
+    }
+    return '$mm:$ss';
+  }
 }
