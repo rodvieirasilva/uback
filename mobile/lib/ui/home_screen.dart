@@ -231,6 +231,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ProgressDashboard(
           progress: ctrl.progress,
           onViewErrors: () => showErrorLogSheet(context, ctrl.progress.errors),
+          onRetryErrors: ctrl.canRetryErrors ? ctrl.retryErrors : null,
         ),
         const SizedBox(height: 16),
         Center(

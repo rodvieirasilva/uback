@@ -21,7 +21,7 @@ void main() {
         case 'getDeviceName':
           return 'Galaxy S23 FE';
         case 'getAppVersion':
-          return '1.2.7';
+          return '1.2.8';
         case 'checkPermissions':
         case 'requestMediaPermissions':
         case 'requestSnapshotPermissions':
@@ -146,7 +146,7 @@ void main() {
     );
 
     expect(await bridge.getDeviceName(), 'Galaxy S23 FE');
-    expect(await bridge.getAppVersion(), '1.2.7');
+    expect(await bridge.getAppVersion(), '1.2.8');
 
     final perms = await bridge.checkPermissions();
     expect(perms.hasMedia, isTrue);

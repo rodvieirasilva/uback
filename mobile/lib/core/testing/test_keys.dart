@@ -37,6 +37,7 @@ abstract final class AppTestKeys {
   static const String statusCurrentFileId = 'status_current_file';
   static const String statusCurrentFileProgressId = 'status_current_file_progress';
   static const String errorLogBtnId = 'error_log_btn';
+  static const String retryErrorsBtnId = 'retry_errors_btn';
   static const String errorLogListId = 'error_log_list';
 
   // Collapsible Media Sources controls on Home screen
@@ -107,6 +108,7 @@ abstract final class AppTestKeys {
   static const ValueKey<String> statusCurrentFileProgress =
       ValueKey(statusCurrentFileProgressId);
   static const ValueKey<String> errorLogBtn = ValueKey(errorLogBtnId);
+  static const ValueKey<String> retryErrorsBtn = ValueKey(retryErrorsBtnId);
   static const ValueKey<String> errorLogList = ValueKey(errorLogListId);
 
   static const ValueKey<String> mediaSourcesCollapse = ValueKey(mediaSourcesCollapseId);

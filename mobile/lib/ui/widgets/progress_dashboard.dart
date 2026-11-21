@@ -9,11 +9,13 @@ import '../theme/app_theme.dart';
 class ProgressDashboard extends StatelessWidget {
   final BackupProgress progress;
   final VoidCallback onViewErrors;
+  final VoidCallback? onRetryErrors;
 
   const ProgressDashboard({
     super.key,
     required this.progress,
     required this.onViewErrors,
+    this.onRetryErrors,
   });
 
   @override
@@ -207,14 +209,30 @@ class ProgressDashboard extends StatelessWidget {
             ],
             if (progress.errors.isNotEmpty) ...[
               const SizedBox(height: 10),
-              withTestId(
-                AppTestKeys.errorLogBtnId,
-                child: OutlinedButton.icon(
-                  key: AppTestKeys.errorLogBtn,
-                  onPressed: onViewErrors,
-                  icon: const Icon(Icons.error_outline, color: Colors.redAccent),
-                  label: Text('View ${progress.errors.length} Error(s)'),
-                ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  withTestId(
+                    AppTestKeys.errorLogBtnId,
+                    child: OutlinedButton.icon(
+                      key: AppTestKeys.errorLogBtn,
+                      onPressed: onViewErrors,
+                      icon: const Icon(Icons.error_outline, color: Colors.redAccent),
+                      label: Text('View ${progress.errors.length} Error(s)'),
+                    ),
+                  ),
+                  if (onRetryErrors != null)
+                    withTestId(
+                      AppTestKeys.retryErrorsBtnId,
+                      child: FilledButton.tonalIcon(
+                        key: AppTestKeys.retryErrorsBtn,
+                        onPressed: onRetryErrors,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry Errors'),
+                      ),
+                    ),
+                ],
               ),
             ],
           ],
