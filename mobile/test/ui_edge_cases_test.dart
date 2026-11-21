@@ -36,7 +36,7 @@ class _InteractiveFakeBridge implements NativeBackupBridge {
   @override
   Future<String> getDeviceName() async => 'Test Phone';
   @override
-  Future<String> getAppVersion() async => '1.2.7';
+  Future<String> getAppVersion() async => '1.2.8';
   @override
   Future<PermissionState> checkPermissions() async => permissions;
   @override
@@ -302,7 +302,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(bridge.lastStartedItems.map((e) => e.fileName).toList(), ['IMG_2.jpg', 'IMG_3.jpg']);
 
-    // Emit failed transfer progress -> tap View Errors -> verify sheet content
+    // Emit failed transfer progress on IMG_2.jpg -> tap Retry Errors -> retries only IMG_2.jpg!
+    bridge.emitProgress(
+      const BackupProgress(
+        state: BackupRunState.completed,
+        stage: 'completed',
+        total: 2,
+        transferred: 1,
+        failed: 1,
+        remaining: 0,
+        errors: [BackupErrorEntry(fileName: 'IMG_2.jpg', message: 'SHA-256 read-back failed')],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(AppTestKeys.retryErrorsBtn), findsOneWidget);
+    await tester.ensureVisible(find.byKey(AppTestKeys.retryErrorsBtn));
+    await tester.tap(find.byKey(AppTestKeys.retryErrorsBtn));
+    await tester.pumpAndSettle();
+    expect(bridge.lastStartedItems.map((e) => e.fileName).toList(), ['IMG_2.jpg']);
+
+    // Emit failed transfer progress again -> tap View Errors -> verify sheet content
     bridge.emitProgress(
       const BackupProgress(
         state: BackupRunState.completed,

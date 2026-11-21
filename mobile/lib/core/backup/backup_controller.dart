@@ -36,6 +36,7 @@ class BackupController extends ChangeNotifier {
   String? _statusMessage;
   List<BackupItem> _activeRunQueue = const [];
   List<BackupItem> _resumableQueue = const [];
+  List<BackupItem> _failedItems = const [];
   CheckpointCursor? _checkpointCursor;
   int _completedInActiveRun = 0;
 
@@ -81,6 +82,8 @@ class BackupController extends ChangeNotifier {
   String? get statusMessage => _statusMessage;
   MediaExporter get exporter => _exporter;
   List<BackupItem> get resumableQueue => _resumableQueue;
+  List<BackupItem> get failedItems => _failedItems;
+  bool get canRetryErrors => !_progress.isActive && _failedItems.isNotEmpty;
   bool get canContinueFromStopped =>
       !_progress.isActive && (_resumableQueue.isNotEmpty || _checkpointCursor != null);
   int get resumableFileCount => _resumableQueue.isNotEmpty
@@ -287,6 +290,13 @@ class BackupController extends ChangeNotifier {
 
   void _updateCheckpointFromProgress(BackupProgress event) {
     if (_activeRunQueue.isEmpty) return;
+    if (event.errors.isNotEmpty) {
+      final failedNames = event.errors.map((e) => e.fileName).toSet();
+      final matched = _activeRunQueue.where((i) => failedNames.contains(i.fileName)).toList();
+      if (matched.isNotEmpty) {
+        _failedItems = List.unmodifiable(matched);
+      }
+    }
     final done = (event.transferred + event.skipped).clamp(0, _activeRunQueue.length);
     if (done > _completedInActiveRun) {
       _completedInActiveRun = done;
@@ -555,26 +565,21 @@ class BackupController extends ChangeNotifier {
     }
   }
 
-  /// Continues a stopped or interrupted backup directly from the remaining checkpoint queue
-  /// (or lightweight cursor for huge multi-thousand-file queues).
-  Future<void> continueBackup() async {
-    if (_progress.isActive || !canContinueFromStopped) return;
-    _statusMessage = null;
-
+  Future<bool> _validateReadyForBackup({required String mediaRequiredMessage}) async {
     final dest = activeDestination;
     if (!dest.isConfigured(_settings)) {
       _statusMessage = 'Configure ${dest.displayName} in Settings before backing up.';
       notifyListeners();
-      return;
+      return false;
     }
 
     _permissions = await _bridge.checkPermissions();
     if (!_permissions.hasMedia) {
       _permissions = await _bridge.requestMediaPermissions();
       if (!_permissions.hasMedia) {
-        _statusMessage = 'Media permission is required to continue backup.';
+        _statusMessage = mediaRequiredMessage;
         notifyListeners();
-        return;
+        return false;
       }
     }
 
@@ -582,6 +587,45 @@ class BackupController extends ChangeNotifier {
       _statusMessage =
           'Crop Mode requires "All files access" permission so verified files can be deleted automatically.';
       notifyListeners();
+      return false;
+    }
+    return true;
+  }
+
+  /// Retries only the files that failed in the most recent backup run.
+  Future<void> retryErrors() async {
+    if (_progress.isActive || _failedItems.isEmpty) return;
+    _statusMessage = null;
+
+    if (!await _validateReadyForBackup(
+      mediaRequiredMessage: 'Media permission is required to retry failed files.',
+    )) {
+      return;
+    }
+
+    final toRetry = List<BackupItem>.of(_failedItems);
+    _failedItems = const [];
+    try {
+      await _launchPlannedItems(toRetry);
+    } catch (e) {
+      _progress = BackupProgress(
+        state: BackupRunState.error,
+        stage: 'error',
+        errors: [BackupErrorEntry(fileName: 'Backup', message: e.toString())],
+      );
+      notifyListeners();
+    }
+  }
+
+  /// Continues a stopped or interrupted backup directly from the remaining checkpoint queue
+  /// (or lightweight cursor for huge multi-thousand-file queues).
+  Future<void> continueBackup() async {
+    if (_progress.isActive || !canContinueFromStopped) return;
+    _statusMessage = null;
+
+    if (!await _validateReadyForBackup(
+      mediaRequiredMessage: 'Media permission is required to continue backup.',
+    )) {
       return;
     }
 
@@ -623,6 +667,7 @@ class BackupController extends ChangeNotifier {
 
   Future<void> _launchPlannedItems(List<BackupItem> items) async {
     _activeRunQueue = List.unmodifiable(items);
+    _failedItems = const [];
     _completedInActiveRun = 0;
     _resumableQueue = List.unmodifiable(items.where((i) => !i.isSnapshot));
     if (_resumableQueue.isNotEmpty) {
