@@ -61,6 +61,23 @@ abstract final class AppTestKeys {
   static const String settingsPasswordId = 'settings_password_input';
   static const String settingsDomainId = 'settings_domain_input';
   static const String settingsWhatsappKeyId = 'settings_whatsapp_key_input';
+  static const String settingsTestWhatsappId = 'settings_test_whatsapp_btn';
+  static const String settingsTelegramApiIdId = 'settings_telegram_api_id_input';
+  static const String settingsTelegramApiHashId = 'settings_telegram_api_hash_input';
+  static const String settingsTelegramPasswordId = 'settings_telegram_password_input';
+  static const String settingsConnectTelegramId = 'settings_connect_telegram_btn';
+  static const String settingsTestTelegramId = 'settings_test_telegram_btn';
+  static const String settingsPrimaryDestToggleId = 'settings_primary_dest_toggle';
+  static const String settingsAddDestinationId = 'settings_add_destination_btn';
+  static String settingsDestinationToggleId(String id) => 'settings_dest_toggle_$id';
+  static String settingsDestinationTestId(String id) => 'settings_dest_test_$id';
+  static String settingsDestinationRemoveId(String id) => 'settings_dest_remove_$id';
+  static ValueKey<String> settingsDestinationToggle(String id) =>
+      ValueKey(settingsDestinationToggleId(id));
+  static ValueKey<String> settingsDestinationTest(String id) =>
+      ValueKey(settingsDestinationTestId(id));
+  static ValueKey<String> settingsDestinationRemove(String id) =>
+      ValueKey(settingsDestinationRemoveId(id));
   static const String settingsDeviceOverrideId = 'settings_device_override_input';
   static const String settingsSaveId = 'settings_save_btn';
   static const String settingsResetDefaultsId = 'settings_reset_defaults_btn';
@@ -124,6 +141,14 @@ abstract final class AppTestKeys {
   static const ValueKey<String> settingsPassword = ValueKey(settingsPasswordId);
   static const ValueKey<String> settingsDomain = ValueKey(settingsDomainId);
   static const ValueKey<String> settingsWhatsappKey = ValueKey(settingsWhatsappKeyId);
+  static const ValueKey<String> settingsTestWhatsapp = ValueKey(settingsTestWhatsappId);
+  static const ValueKey<String> settingsTelegramApiId = ValueKey(settingsTelegramApiIdId);
+  static const ValueKey<String> settingsTelegramApiHash = ValueKey(settingsTelegramApiHashId);
+  static const ValueKey<String> settingsTelegramPassword = ValueKey(settingsTelegramPasswordId);
+  static const ValueKey<String> settingsConnectTelegram = ValueKey(settingsConnectTelegramId);
+  static const ValueKey<String> settingsTestTelegram = ValueKey(settingsTestTelegramId);
+  static const ValueKey<String> settingsPrimaryDestToggle = ValueKey(settingsPrimaryDestToggleId);
+  static const ValueKey<String> settingsAddDestination = ValueKey(settingsAddDestinationId);
   static const ValueKey<String> settingsDeviceOverride = ValueKey(settingsDeviceOverrideId);
   static const ValueKey<String> settingsSave = ValueKey(settingsSaveId);
   static const ValueKey<String> settingsResetDefaults = ValueKey(settingsResetDefaultsId);

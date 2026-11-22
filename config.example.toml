@@ -25,3 +25,5 @@ backup_key_64 = ""
 enabled = true
 api_id = ""
 api_hash = ""
+phone_number = ""
+password = ""

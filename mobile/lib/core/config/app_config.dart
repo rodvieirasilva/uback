@@ -8,6 +8,7 @@ import '../backup/media_exporter.dart';
 import '../backup/media_source.dart';
 import '../utils/path_sanitizer.dart';
 import 'custom_folder_config.dart';
+import 'smb_destination_config.dart';
 
 /// Compile-time defaults injected via `--dart-define-from-file=dart_defines.json`
 /// generated from local (gitignored) `config.toml`.
@@ -29,10 +30,14 @@ class CompileTimeDefaults {
       String.fromEnvironment('UBACK_TELEGRAM_API_ID', defaultValue: '');
   static const String telegramApiHash =
       String.fromEnvironment('UBACK_TELEGRAM_API_HASH', defaultValue: '');
+  static const String telegramPhone =
+      String.fromEnvironment('UBACK_TELEGRAM_PHONE', defaultValue: '');
+  static const String telegramPassword =
+      String.fromEnvironment('UBACK_TELEGRAM_PASSWORD', defaultValue: '');
   static const String e2eDeviceOverride =
       String.fromEnvironment('UBACK_E2E_DEVICE_OVERRIDE', defaultValue: '');
   static const String appVersion =
-      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.10');
+      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.11');
   static const String buildDate =
       String.fromEnvironment('UBACK_BUILD_DATE', defaultValue: '');
   static const String gitSha =
@@ -66,6 +71,9 @@ class CompileTimeDefaults {
       password: password,
       domain: domain,
       whatsappKey: whatsappKey,
+      telegramApiId: telegramApiId,
+      telegramApiHash: telegramApiHash,
+      telegramPassword: telegramPassword,
       deviceFolderOverride: e2eDeviceOverride,
       enabledSourceIds: defaultEnabledMediaSourceIds,
     );
@@ -88,6 +96,11 @@ class AppSettings {
   final String password;
   final String domain;
   final String whatsappKey;
+  final String telegramApiId;
+  final String telegramApiHash;
+  final String telegramPassword;
+  final bool primaryDestinationEnabled;
+  final List<SmbDestinationConfig> extraDestinations;
   final String deviceFolderOverride;
   final Set<String> enabledSourceIds;
   final List<CustomFolderConfig> customFolders;
@@ -108,6 +121,11 @@ class AppSettings {
     required this.password,
     required this.domain,
     this.whatsappKey = '',
+    this.telegramApiId = '',
+    this.telegramApiHash = '',
+    this.telegramPassword = '',
+    this.primaryDestinationEnabled = true,
+    this.extraDestinations = const [],
     required this.deviceFolderOverride,
     this.enabledSourceIds = defaultEnabledMediaSourceIds,
     this.customFolders = const [],
@@ -115,7 +133,35 @@ class AppSettings {
 
   bool isSourceEnabled(String sourceId) => enabledSourceIds.contains(sourceId);
 
-  bool get isConfigured => host.trim().isNotEmpty && share.trim().isNotEmpty;
+  bool get isConfigured =>
+      (primaryDestinationEnabled && host.trim().isNotEmpty && share.trim().isNotEmpty) ||
+      extraDestinations.any((d) => d.enabled && d.isConfigured);
+
+  List<SmbDestinationConfig> get enabledSmbDestinations {
+    final result = <SmbDestinationConfig>[];
+    if (primaryDestinationEnabled && host.trim().isNotEmpty && share.trim().isNotEmpty) {
+      result.add(
+        SmbDestinationConfig(
+          id: 'primary',
+          name: 'Primary SMB NAS',
+          enabled: true,
+          host: host.trim(),
+          port: port,
+          share: share.trim(),
+          basePath: basePath.trim(),
+          username: username.trim(),
+          password: password,
+          domain: domain.trim(),
+        ),
+      );
+    }
+    for (final dest in extraDestinations) {
+      if (dest.enabled && dest.isConfigured) {
+        result.add(dest);
+      }
+    }
+    return result;
+  }
 
   String resolvedDeviceFolder(String detectedDeviceName) {
     final raw = deviceFolderOverride.trim().isNotEmpty
@@ -150,6 +196,11 @@ class AppSettings {
     String? password,
     String? domain,
     String? whatsappKey,
+    String? telegramApiId,
+    String? telegramApiHash,
+    String? telegramPassword,
+    bool? primaryDestinationEnabled,
+    List<SmbDestinationConfig>? extraDestinations,
     String? deviceFolderOverride,
     Set<String>? enabledSourceIds,
     List<CustomFolderConfig>? customFolders,
@@ -170,6 +221,11 @@ class AppSettings {
       password: password ?? this.password,
       domain: domain ?? this.domain,
       whatsappKey: whatsappKey ?? this.whatsappKey,
+      telegramApiId: telegramApiId ?? this.telegramApiId,
+      telegramApiHash: telegramApiHash ?? this.telegramApiHash,
+      telegramPassword: telegramPassword ?? this.telegramPassword,
+      primaryDestinationEnabled: primaryDestinationEnabled ?? this.primaryDestinationEnabled,
+      extraDestinations: extraDestinations ?? this.extraDestinations,
       deviceFolderOverride: deviceFolderOverride ?? this.deviceFolderOverride,
       enabledSourceIds: enabledSourceIds ?? this.enabledSourceIds,
       customFolders: customFolders ?? this.customFolders,
@@ -257,6 +313,13 @@ class AppSettingsRepository {
   static const _kSecretUser = 'uback_smb_username';
   static const _kSecretPass = 'uback_smb_password';
   static const _kSecretWhatsappKey = 'uback_whatsapp_key';
+  static const _kTelegramApiId = 'uback_telegram_api_id';
+  static const _kSecretTelegramApiHash = 'uback_telegram_api_hash';
+  static const _kSecretTelegramPassword = 'uback_telegram_password';
+  static const _kPrimaryDestEnabled = 'uback_primary_dest_enabled';
+  static const _kExtraDestinations = 'uback_extra_destinations';
+  static String _destSecretUserKey(String id) => 'uback_dest_${id}_user';
+  static String _destSecretPassKey(String id) => 'uback_dest_${id}_pass';
 
   final KeyValueStore _plainStore;
   final KeyValueStore _secureStore;
@@ -314,6 +377,9 @@ class AppSettingsRepository {
     final basePath = await _plainStore.read(_kBasePath);
     final domain = await _plainStore.read(_kDomain);
     final deviceOverride = await _plainStore.read(_kDeviceOverride);
+    final telegramApiId = await _plainStore.read(_kTelegramApiId);
+    final primaryDestEnabledRaw = await _plainStore.read(_kPrimaryDestEnabled);
+    final extraDestinationsRaw = await _plainStore.read(_kExtraDestinations);
     final enabledSourcesRaw = await _plainStore.read(_kEnabledSources);
     final customFoldersRaw = await _plainStore.read(_kCustomFolders);
 
@@ -332,6 +398,8 @@ class AppSettingsRepository {
     String? username;
     String? password;
     String? whatsappKey;
+    String? telegramApiHash;
+    String? telegramPassword;
     try {
       username = await _secureStore
           .read(_kSecretUser)
@@ -342,8 +410,40 @@ class AppSettingsRepository {
       whatsappKey = await _secureStore
           .read(_kSecretWhatsappKey)
           .timeout(const Duration(seconds: 2), onTimeout: () => null);
+      telegramApiHash = await _secureStore
+          .read(_kSecretTelegramApiHash)
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
+      telegramPassword = await _secureStore
+          .read(_kSecretTelegramPassword)
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
     } catch (_) {
       // Fallback safely to compile-time defaults if keystore read fails or times out
+    }
+
+    final extraDestinations = <SmbDestinationConfig>[];
+    if (extraDestinationsRaw != null) {
+      for (final map in SmbDestinationConfig.decodePublicMaps(extraDestinationsRaw)) {
+        final id = (map['id'] ?? '').toString();
+        String? dUser;
+        String? dPass;
+        if (id.isNotEmpty) {
+          try {
+            dUser = await _secureStore
+                .read(_destSecretUserKey(id))
+                .timeout(const Duration(seconds: 2), onTimeout: () => null);
+            dPass = await _secureStore
+                .read(_destSecretPassKey(id))
+                .timeout(const Duration(seconds: 2), onTimeout: () => null);
+          } catch (_) {}
+        }
+        extraDestinations.add(
+          SmbDestinationConfig.fromPublicJson(
+            map,
+            username: dUser ?? '',
+            password: dPass ?? '',
+          ),
+        );
+      }
     }
 
     return AppSettings(
@@ -363,6 +463,13 @@ class AppSettingsRepository {
       password: password ?? _defaults.password,
       domain: domain ?? _defaults.domain,
       whatsappKey: whatsappKey ?? _defaults.whatsappKey,
+      telegramApiId: telegramApiId ?? _defaults.telegramApiId,
+      telegramApiHash: telegramApiHash ?? _defaults.telegramApiHash,
+      telegramPassword: telegramPassword ?? _defaults.telegramPassword,
+      primaryDestinationEnabled: primaryDestEnabledRaw != null
+          ? primaryDestEnabledRaw == 'true'
+          : _defaults.primaryDestinationEnabled,
+      extraDestinations: extraDestinations,
       deviceFolderOverride: deviceOverride ?? _defaults.deviceFolderOverride,
       enabledSourceIds: enabledSourceIds,
       customFolders: customFolders,
@@ -384,6 +491,15 @@ class AppSettingsRepository {
     await _plainStore.write(_kBasePath, settings.basePath.trim());
     await _plainStore.write(_kDomain, settings.domain.trim());
     await _plainStore.write(_kDeviceOverride, settings.deviceFolderOverride.trim());
+    await _plainStore.write(_kTelegramApiId, settings.telegramApiId.trim());
+    await _plainStore.write(
+      _kPrimaryDestEnabled,
+      settings.primaryDestinationEnabled.toString(),
+    );
+    await _plainStore.write(
+      _kExtraDestinations,
+      SmbDestinationConfig.encodePublicList(settings.extraDestinations),
+    );
     final sortedSources = settings.enabledSourceIds.toList()..sort();
     await _plainStore.write(_kEnabledSources, sortedSources.join(','));
     await _plainStore.write(
@@ -394,6 +510,12 @@ class AppSettingsRepository {
     await _secureStore.write(_kSecretUser, settings.username.trim());
     await _secureStore.write(_kSecretPass, settings.password);
     await _secureStore.write(_kSecretWhatsappKey, settings.whatsappKey.trim());
+    await _secureStore.write(_kSecretTelegramApiHash, settings.telegramApiHash.trim());
+    await _secureStore.write(_kSecretTelegramPassword, settings.telegramPassword);
+    for (final dest in settings.extraDestinations) {
+      await _secureStore.write(_destSecretUserKey(dest.id), dest.username.trim());
+      await _secureStore.write(_destSecretPassKey(dest.id), dest.password);
+    }
   }
 
   Future<AppSettings> resetToDefaults() async {
@@ -411,6 +533,9 @@ class AppSettingsRepository {
       _kBasePath,
       _kDomain,
       _kDeviceOverride,
+      _kTelegramApiId,
+      _kPrimaryDestEnabled,
+      _kExtraDestinations,
       _kEnabledSources,
       _kCustomFolders,
       _kCheckpointQueue,
@@ -422,6 +547,8 @@ class AppSettingsRepository {
       await _secureStore.delete(_kSecretUser);
       await _secureStore.delete(_kSecretPass);
       await _secureStore.delete(_kSecretWhatsappKey);
+      await _secureStore.delete(_kSecretTelegramApiHash);
+      await _secureStore.delete(_kSecretTelegramPassword);
     } catch (_) {}
     return _defaults;
   }

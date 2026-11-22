@@ -32,6 +32,7 @@
 
     <application
         android:label="UBack"
+        tools:replace="android:label"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">

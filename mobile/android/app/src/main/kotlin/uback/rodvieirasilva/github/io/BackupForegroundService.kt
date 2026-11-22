@@ -563,13 +563,16 @@ class BackupForegroundService : Service() {
                         waitIfPaused = pauseGate,
                     )
 
-                    // Commit incremental WhatsApp delta watermark STRICTLY AFTER verified upload.
+                    // Commit incremental WhatsApp/Telegram delta watermark STRICTLY AFTER verified upload.
                     if (!item.deltaScope.isNullOrBlank() && item.deltaMaxRowId > 0L) {
                         WhatsAppDeltaState.commitWatermark(
                             applicationContext,
                             item.deltaScope,
                             item.deltaMaxRowId,
                         )
+                    }
+                    if (item.id.startsWith("telegram_delta_")) {
+                        TelegramDeltaExporter.commitWatermark(applicationContext, item.id)
                     }
 
                     // Snapshot & delta temp files live in app cache — always remove temp file after verified upload,

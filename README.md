@@ -116,9 +116,13 @@ Unlike WhatsApp, **Telegram** stores its local message database (`cache4.db`) in
      enabled = true
      api_id = "12345678"
      api_hash = "0123456789abcdef0123456789abcdef"
+     phone_number = "+5511999999999" # optional: pre-fills Connect Telegram
+     password = ""                   # optional: pre-fills 2FA password
      ```
      *(To exclude Telegram from a custom build, set `enabled = false` or `--dart-define=UBACK_ENABLE_TELEGRAM=false`.)*
-  3. **Enable in UBack**: Expand **Media Sources → Telegram** and toggle **Incremental Chat Deltas (.db)** (`telegram.deltas`).
+  3. **Connect & Enable in UBack**: Open **Settings → Connectors**, tap **Connect Telegram** (enter phone number, OTP code, and optional 2FA password), then enable **Media Sources → Telegram → Incremental Chat Deltas (.db)** (`telegram.deltas`).
+  4. **What is exported**: All Main and Archived chats, complete message history on initial backfill and incremental deltas thereafter (`id > watermark`), written to self-contained SQLite `.db` files under `{device}/telegram/deltas/{YYYY}/{MM}/` with `users`, `chats`, and `messages` tables (including replies, forwards, edits, outgoing flag, and full media/poll/sticker/location/contact/call metadata).
+  5. **Test Connectors & Multi-Destination SMB**: Settings includes dedicated **Test SMB**, **Test WhatsApp**, and **Test Telegram** buttons, plus an **Additional SMB Destinations** section where you can add multiple SMB targets and toggle each one on or off.
 - **Option B — Telegram Desktop Export (Zero API)**:
   - Export chats from **Telegram Desktop** (`Settings → Advanced → Export Telegram data`) and back up that folder via UBack's **Custom Folders**.
 

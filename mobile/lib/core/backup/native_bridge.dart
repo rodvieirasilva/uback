@@ -212,4 +212,57 @@ class MethodChannelNativeBridge implements NativeBackupBridge {
       return const BackupProgress();
     });
   }
+
+  static Map<String, String?> _parseTelegramAuth(Map<Object?, Object?>? raw) => {
+        'state': raw?['state']?.toString() ?? 'uninitialized',
+        'error': raw?['error']?.toString(),
+      };
+
+  static Future<Map<String, String?>> telegramGetAuthState(int apiId, String apiHash) async {
+    final raw = await _methodChannel.invokeMapMethod<Object?, Object?>(
+      'telegramGetAuthState',
+      {'apiId': apiId, 'apiHash': apiHash},
+    );
+    return _parseTelegramAuth(raw);
+  }
+
+  static Future<Map<String, String?>> telegramSendPhone(String phone) async {
+    final raw = await _methodChannel.invokeMapMethod<Object?, Object?>(
+      'telegramSendPhone',
+      {'phone': phone},
+    );
+    return _parseTelegramAuth(raw);
+  }
+
+  static Future<Map<String, String?>> telegramSendCode(String code) async {
+    final raw = await _methodChannel.invokeMapMethod<Object?, Object?>(
+      'telegramSendCode',
+      {'code': code},
+    );
+    return _parseTelegramAuth(raw);
+  }
+
+  static Future<Map<String, String?>> telegramSendPassword(String password) async {
+    final raw = await _methodChannel.invokeMapMethod<Object?, Object?>(
+      'telegramSendPassword',
+      {'password': password},
+    );
+    return _parseTelegramAuth(raw);
+  }
+
+  static Future<Map<String, String?>> telegramLogout() async {
+    final raw = await _methodChannel.invokeMapMethod<Object?, Object?>('telegramLogout');
+    return _parseTelegramAuth(raw);
+  }
+
+  static Future<Map<String, dynamic>> testWhatsApp(String whatsappKey) async {
+    final raw = await _methodChannel.invokeMapMethod<Object?, Object?>(
+      'testWhatsApp',
+      {'whatsappKey': whatsappKey},
+    );
+    return {
+      'ok': raw?['ok'] == true,
+      'message': raw?['message']?.toString() ?? 'Unknown status',
+    };
+  }
 }

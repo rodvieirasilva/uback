@@ -6,6 +6,8 @@ config.toml
 dart_defines.json
 mobile/dart_defines.json
 dist-local/
+.tmp_build/
+.tmp_test/
 
 # OS / Editor / Python cache
 .DS_Store

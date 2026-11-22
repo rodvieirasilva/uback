@@ -47,19 +47,29 @@ Future<void> _waitForCompleted(
   int? expectedSkipped,
   Duration timeout = const Duration(seconds: 120),
 }) async {
+  String? lastState;
+  String? lastTotal;
+  String? lastSkipped;
+  String? lastFailed;
   final deadline = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(deadline)) {
     await tester.pump(const Duration(milliseconds: 500));
     final stateFinder = find.byKey(AppTestKeys.statusState);
     if (stateFinder.evaluate().isNotEmpty) {
       final text = tester.widget<Text>(stateFinder).data ?? '';
+      lastState = text;
+      final totalText = find.byKey(AppTestKeys.statTotal).evaluate().isNotEmpty
+          ? tester.widget<Text>(find.byKey(AppTestKeys.statTotal)).data
+          : null;
+      final skippedText = find.byKey(AppTestKeys.statSkipped).evaluate().isNotEmpty
+          ? tester.widget<Text>(find.byKey(AppTestKeys.statSkipped)).data
+          : null;
+      lastTotal = totalText;
+      lastSkipped = skippedText;
+      lastFailed = find.byKey(AppTestKeys.statFailed).evaluate().isNotEmpty
+          ? tester.widget<Text>(find.byKey(AppTestKeys.statFailed)).data
+          : null;
       if (text == 'Completed' || text == 'Finished with Errors' || text == 'Cancelled') {
-        final totalText = find.byKey(AppTestKeys.statTotal).evaluate().isNotEmpty
-            ? tester.widget<Text>(find.byKey(AppTestKeys.statTotal)).data
-            : null;
-        final skippedText = find.byKey(AppTestKeys.statSkipped).evaluate().isNotEmpty
-            ? tester.widget<Text>(find.byKey(AppTestKeys.statSkipped)).data
-            : null;
         final totalOk = expectedTotal == null || totalText == '$expectedTotal';
         final skippedOk = expectedSkipped == null || skippedText == '$expectedSkipped';
         if (text != 'Completed' || (totalOk && skippedOk)) {
@@ -69,7 +79,10 @@ Future<void> _waitForCompleted(
       }
     }
   }
-  fail('Timed out waiting for backup to finish.');
+  fail(
+    'Timed out waiting for backup to finish '
+    '(state=$lastState total=$lastTotal skipped=$lastSkipped failed=$lastFailed).',
+  );
 }
 
 void main() {
@@ -299,5 +312,47 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 2));
     expect(find.text('Start Crop Backup'), findsOneWidget);
     expect(find.byKey(AppTestKeys.limitValueInput), findsNothing);
+
+    // 6. Verify Multi-SMB Destinations UI + Connectors (WhatsApp & Telegram TDLib JNI load)
+    await tester.tap(find.byKey(AppTestKeys.openSettings));
+    await tester.pumpAndSettle();
+
+    // Add a second SMB destination, toggle it, and verify it renders cleanly
+    await tester.ensureVisible(find.byKey(AppTestKeys.settingsAddDestination));
+    await tester.tap(find.byKey(AppTestKeys.settingsAddDestination));
+    await tester.pumpAndSettle();
+    final dialogFields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(dialogFields.at(0), 'Secondary E2E NAS');
+    await tester.enterText(dialogFields.at(1), '10.0.2.2');
+    await tester.enterText(dialogFields.at(3), 'uback_share');
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('Add')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Secondary E2E NAS'), findsOneWidget);
+
+    // Test WhatsApp & Telegram TDLib JNI initialization (even without Telegram app installed)
+    await tester.ensureVisible(find.byKey(AppTestKeys.settingsTestWhatsapp));
+    await tester.tap(find.byKey(AppTestKeys.settingsTestWhatsapp));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(AppTestKeys.settingsTelegramApiId));
+    await tester.enterText(find.byKey(AppTestKeys.settingsTelegramApiId), '123456');
+    await tester.enterText(
+      find.byKey(AppTestKeys.settingsTelegramApiHash),
+      '0123456789abcdef0123456789abcdef',
+    );
+    await tester.ensureVisible(find.byKey(AppTestKeys.settingsConnectTelegram));
+    await tester.tap(find.byKey(AppTestKeys.settingsConnectTelegram));
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+    // Dismiss Connect Telegram dialog cleanly after confirming TDLib JNI initialized
+    if (find.text('Cancel').evaluate().isNotEmpty) {
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.textContaining('Telegram Account:'), findsOneWidget);
   });
 }

@@ -89,6 +89,7 @@ object MediaSourceClassifier {
     val DELTA_SOURCE_IDS: Set<String> = setOf(
         "whatsapp.deltas",
         "whatsapp_business.deltas",
+        "telegram.deltas",
     )
 
     /**

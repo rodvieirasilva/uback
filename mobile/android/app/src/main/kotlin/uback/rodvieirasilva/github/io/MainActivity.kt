@@ -71,6 +71,63 @@ class MainActivity : FlutterActivity() {
                 result.success(MediaDiscovery.getDeviceName(applicationContext))
             }
 
+            "telegramGetAuthState" -> {
+                val apiId = call.argument<Int>("apiId") ?: 0
+                val apiHash = call.argument<String>("apiHash") ?: ""
+                Thread {
+                    val state = TelegramClientManager.ensureInitialized(applicationContext, apiId, apiHash)
+                    runOnUiThread { result.success(state) }
+                }.start()
+            }
+
+            "telegramSendPhone" -> {
+                val phone = call.argument<String>("phone") ?: ""
+                Thread {
+                    val state = TelegramClientManager.sendPhoneNumber(phone)
+                    runOnUiThread { result.success(state) }
+                }.start()
+            }
+
+            "telegramSendCode" -> {
+                val code = call.argument<String>("code") ?: ""
+                Thread {
+                    val state = TelegramClientManager.sendCode(code)
+                    runOnUiThread { result.success(state) }
+                }.start()
+            }
+
+            "telegramSendPassword" -> {
+                val password = call.argument<String>("password") ?: ""
+                Thread {
+                    val state = TelegramClientManager.sendPassword(password)
+                    runOnUiThread { result.success(state) }
+                }.start()
+            }
+
+            "telegramLogout" -> {
+                Thread {
+                    val state = TelegramClientManager.logout(applicationContext)
+                    runOnUiThread { result.success(state) }
+                }.start()
+            }
+
+            "testWhatsApp" -> {
+                val key = call.argument<String>("whatsappKey") ?: ""
+                Thread {
+                    val stats = WhatsAppDeltaExporter.estimateStats(applicationContext, key)
+                    val totalBytes = stats.values.sumOf { (it["totalBytes"] as? Number)?.toLong() ?: 0L }
+                    val ok = key.trim().length == 64 || stats.isNotEmpty()
+                    val msg = if (key.trim().length != 64) {
+                        "Enter a 64-digit WhatsApp backup key."
+                    } else {
+                        "WhatsApp key format valid (estimated ${totalBytes}B pending)."
+                    }
+                    runOnUiThread {
+                        result.success(mapOf("ok" to ok, "message" to msg))
+                    }
+                }.start()
+            }
+
             "getAppVersion" -> {
                 val info = runCatching {
                     packageManager.getPackageInfo(packageName, 0)

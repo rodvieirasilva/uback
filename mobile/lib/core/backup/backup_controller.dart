@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
 import '../config/custom_folder_config.dart';
+import '../config/smb_destination_config.dart';
 import 'backup_destination.dart';
 import 'image_video_media_exporter.dart';
 import 'media_exporter.dart';
@@ -56,6 +57,9 @@ class BackupController extends ChangeNotifier {
       deviceFolderProvider: () => resolvedDeviceFolder,
     );
   }
+
+  List<SmbDestinationConfig> _pendingExtraDestinations = const [];
+  List<BackupItem> _multiDestItems = const [];
 
   AppSettings get settings => _settings;
   List<BackupDestination> get availableDestinations => _destinations.all;
@@ -144,6 +148,24 @@ class BackupController extends ChangeNotifier {
     _progressSub = _bridge.progressStream().listen((event) {
       _progress = event;
       _updateCheckpointFromProgress(event);
+      if (event.state == BackupRunState.completed && _pendingExtraDestinations.isNotEmpty) {
+        final nextDest = _pendingExtraDestinations.first;
+        _pendingExtraDestinations = _pendingExtraDestinations.sublist(1);
+        final nextMode = _pendingExtraDestinations.isEmpty ? mode : BackupMode.copy;
+        unawaited(
+          activeDestination.startBackup(
+            settings: nextDest.toAppSettings(_settings),
+            mode: nextMode,
+            deviceFolder: resolvedDeviceFolder,
+            items: _multiDestItems,
+          ),
+        );
+        return;
+      }
+      if (event.state == BackupRunState.cancelled || event.state == BackupRunState.error) {
+        _pendingExtraDestinations = const [];
+        _multiDestItems = const [];
+      }
       notifyListeners();
       if (event.state == BackupRunState.completed ||
           event.state == BackupRunState.cancelled ||
@@ -692,9 +714,18 @@ class BackupController extends ChangeNotifier {
     );
     notifyListeners();
 
+    final enabledDests = _settings.enabledSmbDestinations;
+    final firstSettings =
+        enabledDests.isNotEmpty ? enabledDests.first.toAppSettings(_settings) : _settings;
+    _pendingExtraDestinations =
+        enabledDests.length > 1 ? List.unmodifiable(enabledDests.sublist(1)) : const [];
+    _multiDestItems = enabledDests.length > 1 ? List.unmodifiable(items) : const [];
+    // Strict Deletion Gate: when multiple destinations are enabled, only run Crop deletion on the final destination.
+    final firstMode = _pendingExtraDestinations.isEmpty ? mode : BackupMode.copy;
+
     await activeDestination.startBackup(
-      settings: _settings,
-      mode: mode,
+      settings: firstSettings,
+      mode: firstMode,
       deviceFolder: resolvedDeviceFolder,
       items: items,
     );

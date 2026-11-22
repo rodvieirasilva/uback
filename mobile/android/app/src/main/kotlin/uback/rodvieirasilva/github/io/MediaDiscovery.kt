@@ -110,6 +110,9 @@ object MediaDiscovery {
         // Incremental WhatsApp .crypt15 SQLite delta exports (only new messages since last verified watermark).
         collected.addAll(WhatsAppDeltaExporter.exportEnabledDeltas(context, enabledSources, whatsappKey))
 
+        // Incremental Telegram TDLib SQLite delta exports (only new messages since last verified watermark).
+        collected.addAll(TelegramDeltaExporter.exportEnabledDeltas(context, enabledSources))
+
         val comparator = compareBy<DiscoveredMediaItem> { it.createdAtMs }
             .thenBy { it.fileName }
             .thenBy { it.id }
@@ -158,6 +161,7 @@ object MediaDiscovery {
 
         result.putAll(SnapshotExporter.estimateStats(context))
         result.putAll(WhatsAppDeltaExporter.estimateStats(context, whatsappKey))
+        result.putAll(TelegramDeltaExporter.estimateStats(context))
         return result
     }
 

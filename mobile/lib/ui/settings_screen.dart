@@ -2,12 +2,17 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../core/backup/backup_controller.dart';
+import '../core/backup/native_bridge.dart';
 import '../core/config/app_config.dart';
+import '../core/config/smb_destination_config.dart';
 import '../core/testing/test_keys.dart';
 import '../core/utils/path_sanitizer.dart';
 import 'widgets/adaptive_layout.dart';
 import 'widgets/connection_banner.dart';
+import 'widgets/connectors_section.dart';
 import 'widgets/custom_folders_section.dart';
+import 'widgets/destinations_section.dart';
+import 'widgets/settings_components.dart';
 import 'widgets/settings_sources_section.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -28,11 +33,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _passwordCtrl;
   late final TextEditingController _domainCtrl;
   late final TextEditingController _whatsappKeyCtrl;
+  late final TextEditingController _telegramApiIdCtrl;
+  late final TextEditingController _telegramApiHashCtrl;
+  late final TextEditingController _telegramPasswordCtrl;
   late final TextEditingController _deviceOverrideCtrl;
 
   late String _destinationType;
-  bool _obscurePassword = true;
-  bool _obscureWhatsappKey = true;
+  bool _primaryDestinationEnabled = true;
+  List<SmbDestinationConfig> _extraDestinations = const [];
+  String _telegramAuthState = 'uninitialized';
 
   @override
   void initState() {
@@ -47,6 +56,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _passwordCtrl = TextEditingController(text: s.password);
     _domainCtrl = TextEditingController(text: s.domain);
     _whatsappKeyCtrl = TextEditingController(text: s.whatsappKey);
+    _telegramApiIdCtrl = TextEditingController(text: s.telegramApiId);
+    _telegramApiHashCtrl = TextEditingController(text: s.telegramApiHash);
+    _telegramPasswordCtrl = TextEditingController(text: s.telegramPassword);
+    _primaryDestinationEnabled = s.primaryDestinationEnabled;
+    _extraDestinations = List<SmbDestinationConfig>.of(s.extraDestinations);
     _deviceOverrideCtrl = TextEditingController(text: s.deviceFolderOverride);
   }
 
@@ -60,6 +74,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _passwordCtrl.dispose();
     _domainCtrl.dispose();
     _whatsappKeyCtrl.dispose();
+    _telegramApiIdCtrl.dispose();
+    _telegramApiHashCtrl.dispose();
+    _telegramPasswordCtrl.dispose();
     _deviceOverrideCtrl.dispose();
     super.dispose();
   }
@@ -74,6 +91,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         password: _passwordCtrl.text,
         domain: _domainCtrl.text.trim(),
         whatsappKey: _whatsappKeyCtrl.text.trim(),
+        telegramApiId: _telegramApiIdCtrl.text.trim(),
+        telegramApiHash: _telegramApiHashCtrl.text.trim(),
+        telegramPassword: _telegramPasswordCtrl.text,
+        primaryDestinationEnabled: _primaryDestinationEnabled,
+        extraDestinations: List<SmbDestinationConfig>.unmodifiable(_extraDestinations),
         deviceFolderOverride: _deviceOverrideCtrl.text.trim(),
       );
 
@@ -87,6 +109,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _passwordCtrl.text = s.password;
     _domainCtrl.text = s.domain;
     _whatsappKeyCtrl.text = s.whatsappKey;
+    _telegramApiIdCtrl.text = s.telegramApiId;
+    _telegramApiHashCtrl.text = s.telegramApiHash;
+    _telegramPasswordCtrl.text = s.telegramPassword;
+    setState(() {
+      _primaryDestinationEnabled = s.primaryDestinationEnabled;
+      _extraDestinations = List<SmbDestinationConfig>.of(s.extraDestinations);
+    });
     _deviceOverrideCtrl.text = s.deviceFolderOverride;
   }
 
@@ -104,6 +133,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Restored compile-time defaults')),
     );
+  }
+
+  Future<void> _showTelegramConnectDialog() async {
+    final apiId = int.tryParse(_telegramApiIdCtrl.text.trim()) ?? 0;
+    final apiHash = _telegramApiHashCtrl.text.trim();
+    if (apiId <= 0 || apiHash.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter Telegram API ID and API Hash first.')),
+      );
+      return;
+    }
+
+    var res = await MethodChannelNativeBridge.telegramGetAuthState(apiId, apiHash);
+    if (!mounted) return;
+    setState(() => _telegramAuthState = res['state'] ?? 'uninitialized');
+    if (_telegramAuthState == 'ready') return;
+
+    final inputCtrl = TextEditingController();
+    while (mounted) {
+      final state = _telegramAuthState;
+      if (state == 'ready') break;
+      final label = switch (state) {
+        'waitCode' => 'Telegram OTP Code',
+        'waitPassword' => 'Telegram 2FA Password',
+        _ => 'Phone Number (e.g. +5511999999999)',
+      };
+      final err = res['error'];
+      if (state == 'waitPhoneNumber' || state == 'uninitialized') {
+        inputCtrl.text = CompileTimeDefaults.telegramPhone;
+      } else if (state == 'waitPassword') {
+        inputCtrl.text = _telegramPasswordCtrl.text.trim();
+      } else {
+        inputCtrl.clear();
+      }
+      final submitted = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Connect Telegram'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (err != null && err.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(err, style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                ),
+              TextField(
+                controller: inputCtrl,
+                obscureText: state == 'waitPassword',
+                decoration: InputDecoration(labelText: label),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, inputCtrl.text.trim()),
+              child: const Text('Submit'),
+            ),
+          ],
+        ),
+      );
+      if (submitted == null || submitted.isEmpty) break;
+      res = switch (state) {
+        'waitCode' => await MethodChannelNativeBridge.telegramSendCode(submitted),
+        'waitPassword' => await MethodChannelNativeBridge.telegramSendPassword(submitted),
+        _ => await MethodChannelNativeBridge.telegramSendPhone(submitted),
+      };
+      if (!mounted) break;
+      setState(() => _telegramAuthState = res['state'] ?? _telegramAuthState);
+    }
+    inputCtrl.dispose();
   }
 
   @override
@@ -184,12 +286,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SizedBox(height: 18),
-        Text(
-          'SMB / NAS CONNECTION',
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                letterSpacing: 1.1,
-              ),
+        SettingsSectionHeader(
+          title: 'PRIMARY SMB / NAS DESTINATION',
+          trailing: withTestId(
+            AppTestKeys.settingsPrimaryDestToggleId,
+            child: Switch(
+              key: AppTestKeys.settingsPrimaryDestToggle,
+              value: _primaryDestinationEnabled,
+              onChanged: (val) => setState(() => _primaryDestinationEnabled = val),
+            ),
+          ),
         ),
         const SizedBox(height: 12),
         Row(
@@ -254,20 +360,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        withTestId(
-          AppTestKeys.settingsPasswordId,
-          child: TextField(
-            key: AppTestKeys.settingsPassword,
-            controller: _passwordCtrl,
-            obscureText: _obscurePassword,
-            decoration: InputDecoration(
-              labelText: 'Password',
-              suffixIcon: IconButton(
-                icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-              ),
-            ),
-          ),
+        SecretTextField(
+          testId: AppTestKeys.settingsPasswordId,
+          fieldKey: AppTestKeys.settingsPassword,
+          controller: _passwordCtrl,
+          labelText: 'Password',
         ),
         const SizedBox(height: 12),
         withTestId(
@@ -277,6 +374,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
             controller: _domainCtrl,
             decoration: const InputDecoration(labelText: 'Domain / Workgroup (optional)'),
           ),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: withTestId(
+            AppTestKeys.settingsTestConnectionId,
+            child: OutlinedButton.icon(
+              key: AppTestKeys.settingsTestConnection,
+              onPressed: ctrl.testingConnection
+                  ? null
+                  : () => ctrl.testConnection(_collectSettings()),
+              icon: ctrl.testingConnection
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.lan_outlined, size: 18),
+              label: const Text('Test SMB', maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        ),
+        if (ctrl.connectionResult != null) ...[
+          const SizedBox(height: 10),
+          ConnectionBanner(result: ctrl.connectionResult!),
+        ],
+        const SizedBox(height: 16),
+        ExtraDestinationsSection(
+          destinations: _extraDestinations,
+          onChanged: (updated) => setState(() => _extraDestinations = updated),
+          onTest: (dest) => ctrl.testConnection(dest.toAppSettings(_collectSettings())),
         ),
         const SizedBox(height: 12),
         withTestId(
@@ -290,60 +418,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        withTestId(
-          AppTestKeys.settingsWhatsappKeyId,
-          child: TextField(
-            key: AppTestKeys.settingsWhatsappKey,
-            controller: _whatsappKeyCtrl,
-            obscureText: _obscureWhatsappKey,
-            decoration: InputDecoration(
-              labelText: 'WhatsApp 64-Digit Backup Key (optional)',
-              helperText: 'Used locally to export incremental SQLite chat deltas (.db) from .crypt15',
-              suffixIcon: IconButton(
-                icon: Icon(_obscureWhatsappKey ? Icons.visibility : Icons.visibility_off),
-                onPressed: () => setState(() => _obscureWhatsappKey = !_obscureWhatsappKey),
+        ConnectorsSection(
+          whatsappKeyCtrl: _whatsappKeyCtrl,
+          onTestWhatsapp: () async {
+            final res = await MethodChannelNativeBridge.testWhatsApp(_whatsappKeyCtrl.text.trim());
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(res['message']?.toString() ?? 'WhatsApp test complete')),
+            );
+          },
+          telegramApiIdCtrl: _telegramApiIdCtrl,
+          telegramApiHashCtrl: _telegramApiHashCtrl,
+          telegramPasswordCtrl: _telegramPasswordCtrl,
+          telegramAuthState: _telegramAuthState,
+          onConnectTelegram: _showTelegramConnectDialog,
+          onTestTelegram: () async {
+            final apiId = int.tryParse(_telegramApiIdCtrl.text.trim()) ?? 0;
+            final apiHash = _telegramApiHashCtrl.text.trim();
+            final res = await MethodChannelNativeBridge.telegramGetAuthState(apiId, apiHash);
+            if (!context.mounted) return;
+            final st = res['state'] ?? 'uninitialized';
+            setState(() => _telegramAuthState = st);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Telegram status: $st${res['error'] != null ? ' (${res['error']})' : ''}',
+                ),
               ),
+            );
+          },
+          onDisconnectTelegram: () async {
+            final res = await MethodChannelNativeBridge.telegramLogout();
+            if (mounted) {
+              setState(() => _telegramAuthState = res['state'] ?? 'uninitialized');
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerRight,
+          child: withTestId(
+            AppTestKeys.settingsResetDefaultsId,
+            child: OutlinedButton(
+              key: AppTestKeys.settingsResetDefaults,
+              onPressed: _resetDefaults,
+              child: const Text('Reset Defaults', maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: withTestId(
-                AppTestKeys.settingsTestConnectionId,
-                child: OutlinedButton.icon(
-                  key: AppTestKeys.settingsTestConnection,
-                  onPressed: ctrl.testingConnection
-                      ? null
-                      : () => ctrl.testConnection(_collectSettings()),
-                  icon: ctrl.testingConnection
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.wifi_tethering),
-                  label: const Text('Test Connection', maxLines: 1, overflow: TextOverflow.ellipsis),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            withTestId(
-              AppTestKeys.settingsResetDefaultsId,
-              child: OutlinedButton(
-                key: AppTestKeys.settingsResetDefaults,
-                onPressed: _resetDefaults,
-                child: const Text('Reset Defaults', maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-            ),
-          ],
-        ),
-        if (ctrl.connectionResult != null) ...[
-          const SizedBox(height: 12),
-          ConnectionBanner(result: ctrl.connectionResult!),
-        ],
       ];
 
   List<Widget> _buildCustomFoldersAndPermissions(

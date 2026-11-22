@@ -102,6 +102,8 @@ def main() -> int:
         "UBACK_ENABLE_TELEGRAM": "true" if bool(telegram.get("enabled", True)) else "false",
         "UBACK_TELEGRAM_API_ID": str(telegram.get("api_id", "")),
         "UBACK_TELEGRAM_API_HASH": str(telegram.get("api_hash", "")),
+        "UBACK_TELEGRAM_PHONE": str(telegram.get("phone_number", "")),
+        "UBACK_TELEGRAM_PASSWORD": str(telegram.get("password", "")),
         "UBACK_APP_VERSION": read_pubspec_version(repo_root),
         "UBACK_BUILD_DATE": read_build_date(repo_root),
         "UBACK_GIT_SHA": read_git_sha(repo_root),
