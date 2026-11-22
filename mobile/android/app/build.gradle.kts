@@ -35,9 +35,29 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        val ksPropsPath = System.getenv("UBACK_KEYSTORE_PROPERTIES")
+            ?: "${System.getProperty("user.home")}/.uback-signing/keystore.properties"
+        val ksPropsFile = file(ksPropsPath)
+        if (ksPropsFile.exists()) {
+            val props = java.util.Properties().apply {
+                ksPropsFile.inputStream().use { load(it) }
+            }
+            create("release") {
+                storeFile = file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
