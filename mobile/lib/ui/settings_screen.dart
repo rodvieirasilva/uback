@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/backup/backup_controller.dart';
 import '../core/backup/native_bridge.dart';
+import '../core/backup/telegram_connect_flow.dart';
 import '../core/config/app_config.dart';
 import '../core/config/smb_destination_config.dart';
 import '../core/testing/test_keys.dart';
@@ -144,76 +145,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _showTelegramConnectDialog() async {
-    final apiId = int.tryParse(_telegramApiIdCtrl.text.trim()) ?? 0;
-    final apiHash = _telegramApiHashCtrl.text.trim();
-    if (apiId <= 0 || apiHash.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter Telegram API ID and API Hash first.')),
-      );
-      return;
-    }
-
-    var res = await MethodChannelNativeBridge.telegramGetAuthState(apiId, apiHash);
+    final result = await TelegramConnectFlow.run(
+      apiId: int.tryParse(_telegramApiIdCtrl.text.trim()) ?? 0,
+      apiHash: _telegramApiHashCtrl.text.trim(),
+      phone: _telegramPhoneCtrl.text.trim(),
+      password: _telegramPasswordCtrl.text,
+      getAuthState: MethodChannelNativeBridge.telegramGetAuthState,
+      sendPhone: MethodChannelNativeBridge.telegramSendPhone,
+      sendCode: MethodChannelNativeBridge.telegramSendCode,
+      sendPassword: MethodChannelNativeBridge.telegramSendPassword,
+      promptOtpCode: (err) async {
+        if (!mounted) return null;
+        return showDialog<String>(
+          context: context,
+          builder: (_) => _TelegramOtpDialog(errorMessage: err),
+        );
+      },
+    );
     if (!mounted) return;
-    setState(() => _telegramAuthState = res['state'] ?? 'uninitialized');
-    if (_telegramAuthState == 'ready') return;
-
-    final inputCtrl = TextEditingController();
-    while (mounted) {
-      final state = _telegramAuthState;
-      if (state == 'ready') break;
-      final label = switch (state) {
-        'waitCode' => 'Telegram OTP Code',
-        'waitPassword' => 'Telegram 2FA Password',
-        _ => 'Phone Number (e.g. +5511999999999)',
-      };
-      final err = res['error'];
-      if (state == 'waitPhoneNumber' || state == 'uninitialized') {
-        inputCtrl.text = _telegramPhoneCtrl.text.trim();
-      } else if (state == 'waitPassword') {
-        inputCtrl.text = _telegramPasswordCtrl.text.trim();
-      } else {
-        inputCtrl.clear();
-      }
-      final submitted = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Connect Telegram'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (err != null && err.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(err, style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
-                ),
-              TextField(
-                controller: inputCtrl,
-                obscureText: state == 'waitPassword',
-                decoration: InputDecoration(labelText: label),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, inputCtrl.text.trim()),
-              child: const Text('Submit'),
-            ),
-          ],
-        ),
-      );
-      if (submitted == null || submitted.isEmpty) break;
-      res = switch (state) {
-        'waitCode' => await MethodChannelNativeBridge.telegramSendCode(submitted),
-        'waitPassword' => await MethodChannelNativeBridge.telegramSendPassword(submitted),
-        _ => await MethodChannelNativeBridge.telegramSendPhone(submitted),
-      };
-      if (!mounted) break;
-      setState(() => _telegramAuthState = res['state'] ?? _telegramAuthState);
+    setState(() => _telegramAuthState = result.state);
+    if (result.message != null && result.message!.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message!)));
     }
-    inputCtrl.dispose();
   }
 
   @override
@@ -391,4 +344,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ];
+}
+
+class _TelegramOtpDialog extends StatefulWidget {
+  final String? errorMessage;
+
+  const _TelegramOtpDialog({this.errorMessage});
+
+  @override
+  State<_TelegramOtpDialog> createState() => _TelegramOtpDialogState();
+}
+
+class _TelegramOtpDialogState extends State<_TelegramOtpDialog> {
+  final _codeCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _codeCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final err = widget.errorMessage;
+    return AlertDialog(
+      title: const Text('Connect Telegram'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (err != null && err.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(err, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ),
+          TextField(
+            controller: _codeCtrl,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Telegram OTP Code'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _codeCtrl.text.trim()),
+          child: const Text('Submit'),
+        ),
+      ],
+    );
+  }
 }

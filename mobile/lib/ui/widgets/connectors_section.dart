@@ -75,7 +75,7 @@ class ConnectorsSection extends StatelessWidget {
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
-                labelText: 'Telegram API ID (optional)',
+                labelText: 'Telegram API ID',
                 helperText: 'From https://my.telegram.org (Client API)',
               ),
             ),
@@ -85,7 +85,7 @@ class ConnectorsSection extends StatelessWidget {
             testId: AppTestKeys.settingsTelegramApiHashId,
             fieldKey: AppTestKeys.settingsTelegramApiHash,
             controller: telegramApiHashCtrl,
-            labelText: 'Telegram API Hash (optional)',
+            labelText: 'Telegram API Hash',
           ),
           const SizedBox(height: 12),
           withTestId(
@@ -95,7 +95,7 @@ class ConnectorsSection extends StatelessWidget {
               controller: telegramPhoneCtrl,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
-                labelText: 'Telegram Phone Number (optional)',
+                labelText: 'Telegram Phone Number',
                 hintText: '+5511999999999',
               ),
             ),
@@ -105,7 +105,7 @@ class ConnectorsSection extends StatelessWidget {
             testId: AppTestKeys.settingsTelegramPasswordId,
             fieldKey: AppTestKeys.settingsTelegramPassword,
             controller: telegramPasswordCtrl,
-            labelText: 'Telegram 2FA Password (optional)',
+            labelText: 'Telegram 2FA Password (if enabled)',
           ),
           const SizedBox(height: 8),
           Wrap(
