@@ -187,21 +187,25 @@ object TelegramClientManager {
         return getAuthState()
     }
 
-    fun <T : TdApi.Object> query(function: TdApi.Function<T>): TdApi.Object? {
+    fun <T : TdApi.Object> query(
+        function: TdApi.Function<T>,
+        timeoutSeconds: Long = QUERY_TIMEOUT_SECONDS,
+    ): TdApi.Object? {
         val c = client ?: return null
-        return sendBlocking(c, function)
+        return sendBlocking(c, function, timeoutSeconds)
     }
 
     private fun <T : TdApi.Object> sendBlocking(
         c: Client,
         function: TdApi.Function<T>,
+        timeoutSeconds: Long = QUERY_TIMEOUT_SECONDS,
     ): TdApi.Object? {
         val future = CompletableFuture<TdApi.Object>()
         c.send(function) { obj -> future.complete(obj) }
         return try {
-            future.get(QUERY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            future.get(timeoutSeconds, TimeUnit.SECONDS)
         } catch (e: Throwable) {
-            Log.w(TAG, "TDLib query timeout/error: ${e.message}")
+            Log.w(TAG, "TDLib query timeout/error (${function.javaClass.simpleName}): ${e.message}")
             null
         }
     }

@@ -36,7 +36,6 @@ class ConnectorsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 18),
         const SettingsSectionHeader(title: 'WHATSAPP'),
         const SizedBox(height: 10),
         SecretTextField(
@@ -60,7 +59,7 @@ class ConnectorsSection extends StatelessWidget {
           ),
         ),
         if (CompileTimeDefaults.enableTelegram) ...[
-          const SizedBox(height: 18),
+          const SettingsSectionDivider(),
           const SettingsSectionHeader(title: 'TELEGRAM'),
           const SizedBox(height: 10),
           withTestId(

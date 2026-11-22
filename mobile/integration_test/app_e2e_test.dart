@@ -332,7 +332,7 @@ void main() {
       find.descendant(of: find.byType(AlertDialog), matching: find.text('Add')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Secondary E2E NAS'), findsOneWidget);
+    expect(find.textContaining('Secondary E2E NAS'), findsOneWidget);
 
     // Test WhatsApp & Telegram TDLib JNI initialization (even without Telegram app installed)
     await tester.ensureVisible(find.byKey(AppTestKeys.settingsTestWhatsapp));

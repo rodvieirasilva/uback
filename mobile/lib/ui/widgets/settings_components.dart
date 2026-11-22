@@ -2,6 +2,19 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../core/testing/test_keys.dart';
 
+/// Shared horizontal divider between logical Settings sections.
+class SettingsSectionDivider extends StatelessWidget {
+  const SettingsSectionDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 16),
+      child: Divider(height: 1),
+    );
+  }
+}
+
 /// Shared uppercase primary-colored section header for Settings screens, with optional trailing widget.
 class SettingsSectionHeader extends StatelessWidget {
   final String title;

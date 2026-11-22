@@ -123,7 +123,7 @@ void main() {
 
     expect(list, hasLength(1));
     final id = list.first.id;
-    expect(find.text('NAS 2'), findsOneWidget);
+    expect(find.textContaining('NAS 2'), findsOneWidget);
 
     await tester.tap(find.byKey(AppTestKeys.settingsDestinationTest(id)));
     await tester.pump();

@@ -259,14 +259,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     String autoDevice,
   ) =>
       [
-        Text(
-          'BACKUP DESTINATION',
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                letterSpacing: 1.1,
-              ),
+        const SettingsSectionHeader(title: 'DEVICE'),
+        const SizedBox(height: 10),
+        withTestId(
+          AppTestKeys.settingsDeviceOverrideId,
+          child: TextField(
+            key: AppTestKeys.settingsDeviceOverride,
+            controller: _deviceOverrideCtrl,
+            decoration: InputDecoration(
+              labelText: 'Device Folder Override (optional)',
+              helperText: 'Auto-detected: "${ctrl.detectedDeviceName}" -> $autoDevice',
+            ),
+          ),
         ),
-        const SizedBox(height: 8),
+        const SettingsSectionDivider(),
+        SettingsSectionHeader(
+          title: 'DESTINATIONS',
+          trailing: withTestId(
+            AppTestKeys.settingsPrimaryDestToggleId,
+            child: Switch(
+              key: AppTestKeys.settingsPrimaryDestToggle,
+              value: _primaryDestinationEnabled,
+              onChanged: (val) => setState(() => _primaryDestinationEnabled = val),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
         withTestId(
           AppTestKeys.settingsDestinationTypeId,
           child: DropdownButtonFormField<String>(
@@ -283,18 +301,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (val) {
               if (val != null) setState(() => _destinationType = val);
             },
-          ),
-        ),
-        const SizedBox(height: 18),
-        SettingsSectionHeader(
-          title: 'PRIMARY SMB / NAS DESTINATION',
-          trailing: withTestId(
-            AppTestKeys.settingsPrimaryDestToggleId,
-            child: Switch(
-              key: AppTestKeys.settingsPrimaryDestToggle,
-              value: _primaryDestinationEnabled,
-              onChanged: (val) => setState(() => _primaryDestinationEnabled = val),
-            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -400,24 +406,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 10),
           ConnectionBanner(result: ctrl.connectionResult!),
         ],
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         ExtraDestinationsSection(
           destinations: _extraDestinations,
           onChanged: (updated) => setState(() => _extraDestinations = updated),
           onTest: (dest) => ctrl.testConnection(dest.toAppSettings(_collectSettings())),
         ),
-        const SizedBox(height: 12),
-        withTestId(
-          AppTestKeys.settingsDeviceOverrideId,
-          child: TextField(
-            key: AppTestKeys.settingsDeviceOverride,
-            controller: _deviceOverrideCtrl,
-            decoration: InputDecoration(
-              labelText: 'Device Folder Override (optional)',
-              helperText: 'Auto-detected: "${ctrl.detectedDeviceName}" -> $autoDevice',
-            ),
-          ),
-        ),
+        const SettingsSectionDivider(),
         ConnectorsSection(
           whatsappKeyCtrl: _whatsappKeyCtrl,
           onTestWhatsapp: () async {
@@ -473,13 +468,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     BackupController ctrl,
   ) =>
       [
+        const SettingsSectionDivider(),
         CustomFoldersSection(
           folders: ctrl.settings.customFolders,
           onBrowse: ctrl.pickCustomFolder,
           onAdd: (path, name) => ctrl.addCustomFolder(relativePath: path, displayName: name),
           onRemove: ctrl.removeCustomFolder,
         ),
-        const SizedBox(height: 24),
+        const SettingsSectionDivider(),
         SettingsPermissionsSection(
           hasAllFiles: ctrl.permissions.hasAllFiles,
           onOpenAllFilesAccess: ctrl.openAllFilesAccessSettings,

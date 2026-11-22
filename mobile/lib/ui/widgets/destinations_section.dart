@@ -33,35 +33,9 @@ class ExtraDestinationsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text('Additional SMB Destinations', style: theme.textTheme.titleSmall),
-            withTestId(
-              AppTestKeys.settingsAddDestinationId,
-              child: OutlinedButton.icon(
-                key: AppTestKeys.settingsAddDestination,
-                onPressed: () => _showAddDialog(context),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add Destination'),
-              ),
-            ),
-          ],
-        ),
-        if (destinations.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              'No extra destinations configured. Add multiple SMB targets and toggle them on or off.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
         for (var i = 0; i < destinations.length; i++)
           Card(
-            margin: const EdgeInsets.only(top: 8),
+            margin: const EdgeInsets.only(bottom: 10),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Column(
@@ -74,7 +48,7 @@ class ExtraDestinationsSection extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              destinations[i].name,
+                              '${destinations[i].name} • SMB / NAS',
                               style: theme.textTheme.titleSmall,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -133,6 +107,18 @@ class ExtraDestinationsSection extends StatelessWidget {
               ),
             ),
           ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: withTestId(
+            AppTestKeys.settingsAddDestinationId,
+            child: OutlinedButton.icon(
+              key: AppTestKeys.settingsAddDestination,
+              onPressed: () => _showAddDialog(context),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Destination'),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -171,11 +157,20 @@ class _AddSmbDestinationDialogState extends State<_AddSmbDestinationDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Add SMB Destination'),
+      title: const Text('Add Destination'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            DropdownButtonFormField<String>(
+              initialValue: 'smb_nas',
+              decoration: const InputDecoration(labelText: 'Destination Type'),
+              items: const [
+                DropdownMenuItem(value: 'smb_nas', child: Text('SMB / NAS')),
+              ],
+              onChanged: (_) {},
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _nameCtrl,
               decoration: const InputDecoration(labelText: 'Label (e.g. Offsite NAS)'),
