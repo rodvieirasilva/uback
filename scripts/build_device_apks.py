@@ -97,6 +97,7 @@ def main() -> int:
 
         env = os.environ.copy()
         env["UBACK_WHATSAPP_KEY_OVERRIDE"] = key_value
+        env["UBACK_PROFILE"] = device_tag
         subprocess.run(
             [sys.executable, str(SCRIPT_DIR / "parse_config.py")],
             cwd=repo_root,

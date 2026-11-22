@@ -27,3 +27,7 @@ api_id = ""
 api_hash = ""
 phone_number = ""
 password = ""
+
+# Optional per-device profile overrides (used by scripts/build_device_apks.py via UBACK_PROFILE)
+# [profiles.example_device]
+# enable_telegram = false

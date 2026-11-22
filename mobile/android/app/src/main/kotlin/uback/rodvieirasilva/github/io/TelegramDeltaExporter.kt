@@ -27,14 +27,17 @@ object TelegramDeltaExporter {
     private const val TAG = "UBack"
     private const val PREFS_NAME = "uback_telegram_delta_state"
     private const val KEY_SCHEMA_VERSION = "schema_version"
-    private const val CURRENT_SCHEMA_VERSION = 2
+    private const val CURRENT_SCHEMA_VERSION = 3
     private const val KEY_WATERMARKS_PREFIX = "chat_wm_"
+    private const val KEY_BACKFILL_PREFIX = "chat_bf_"
     private const val MAX_CHATS_QUERY = 2_000
     private const val PAGE_SIZE = 100
-    private const val MAX_RUN_DURATION_MS = 60_000L
+    private const val MAX_MSGS_PER_CHAT_PER_RUN = 1_000
+    private const val MAX_RUN_DURATION_MS = 45_000L
     private const val REMOTE_SUBPATH = "telegram/deltas"
 
-    private val pendingWatermarks = ConcurrentHashMap<String, Map<Long, Long>>()
+    private val exportLock = Any()
+    private val pendingCursors = ConcurrentHashMap<String, Map<Long, Pair<Long, Long>>>()
 
     private fun ensureSchemaVersion(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -86,7 +89,8 @@ object TelegramDeltaExporter {
             val chatObj = TelegramClientManager.query(TdApi.GetChat(chatId), timeoutSeconds = 3) as? TdApi.Chat ?: continue
             val lastMsgId = chatObj.lastMessage?.id ?: 0L
             val wm = prefs.getLong("$KEY_WATERMARKS_PREFIX$chatId", 0L)
-            if (lastMsgId > wm) {
+            val bf = prefs.getLong("$KEY_BACKFILL_PREFIX$chatId", 0L)
+            if (lastMsgId > wm || bf > 0L) {
                 chatsWithNew++
             }
         }
@@ -100,7 +104,7 @@ object TelegramDeltaExporter {
     fun exportEnabledDeltas(
         context: Context,
         enabledSources: Set<String>,
-    ): List<DiscoveredMediaItem> {
+    ): List<DiscoveredMediaItem> = synchronized(exportLock) {
         if ("telegram.deltas" !in enabledSources) return emptyList()
         ensureSchemaVersion(context)
         TelegramClientManager.ensureInitializedFromPrefs(context)
@@ -117,23 +121,42 @@ object TelegramDeltaExporter {
         }
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val newWatermarks = mutableMapOf<Long, Long>()
+        val loadedChats = mutableListOf<Pair<TdApi.Chat, Boolean>>()
+        for ((chatId, isArchived) in chatPairs) {
+            val chat = TelegramClientManager.query(TdApi.GetChat(chatId), timeoutSeconds = 3) as? TdApi.Chat ?: continue
+            val lastMsgId = chat.lastMessage?.id ?: 0L
+            val wm = prefs.getLong("$KEY_WATERMARKS_PREFIX$chatId", 0L)
+            val bf = prefs.getLong("$KEY_BACKFILL_PREFIX$chatId", 0L)
+            if (lastMsgId > wm || bf > 0L) {
+                loadedChats.add(chat to isArchived)
+            }
+        }
+        // Prioritize private 1-on-1 chats and normal groups ahead of giant broadcast channels.
+        loadedChats.sortBy { (chat, _) ->
+            when (val t = chat.type) {
+                is TdApi.ChatTypePrivate -> 0
+                is TdApi.ChatTypeBasicGroup -> 1
+                is TdApi.ChatTypeSupergroup -> if (t.isChannel) 3 else 2
+                else -> 4
+            }
+        }
+
+        val cursorUpdates = mutableMapOf<Long, Pair<Long, Long>>()
         val exportedChats = mutableListOf<ChatRow>()
         val exportedMessages = mutableListOf<MessageRow>()
         val referencedUserIds = LinkedHashSet<Long>()
         val runStartMs = System.currentTimeMillis()
         var consecutiveTimeouts = 0
 
-        for ((idx, pair) in chatPairs.withIndex()) {
+        for ((idx, pair) in loadedChats.withIndex()) {
             if (exportedMessages.isNotEmpty() && System.currentTimeMillis() - runStartMs >= MAX_RUN_DURATION_MS) {
-                Log.i(TAG, "Telegram delta: reached 60s batch budget at chat $idx/${chatPairs.size}; remaining chats will continue next run")
+                Log.i(TAG, "Telegram delta: reached 45s batch budget at chat $idx/${loadedChats.size}; remaining chats will continue next run")
                 break
             }
-            val (chatId, isArchived) = pair
-            val chat = TelegramClientManager.query(TdApi.GetChat(chatId), timeoutSeconds = 5) as? TdApi.Chat ?: continue
+            val (chat, isArchived) = pair
+            val chatId = chat.id
             val wm = prefs.getLong("$KEY_WATERMARKS_PREFIX$chatId", 0L)
-            val lastMsgId = chat.lastMessage?.id ?: 0L
-            if (lastMsgId <= wm) continue
+            val existingBf = prefs.getLong("$KEY_BACKFILL_PREFIX$chatId", 0L)
 
             val chatType = chat.type
             if (chatType is TdApi.ChatTypePrivate) {
@@ -151,52 +174,103 @@ object TelegramDeltaExporter {
                 ),
             )
 
-            var fromMsgId = 0L
-            var maxSeenId = wm
-            var chatComplete = true
+            var newWm = wm
+            var newBf = existingBf
             var chatMsgCount = 0
-            while (true) {
-                if (exportedMessages.isNotEmpty() && System.currentTimeMillis() - runStartMs >= MAX_RUN_DURATION_MS) {
-                    chatComplete = false
-                    break
-                }
-                val historyObj = TelegramClientManager.query(
-                    TdApi.GetChatHistory(chatId, fromMsgId, 0, PAGE_SIZE, false),
-                    timeoutSeconds = 8,
-                )
-                if (historyObj == null || historyObj is TdApi.Error) {
-                    chatComplete = false
-                    consecutiveTimeouts++
-                    Log.w(TAG, "Telegram delta: chat '${chat.title}' history interrupted ($historyObj); will retry next run")
-                    break
-                }
-                consecutiveTimeouts = 0
-                val msgs = (historyObj as? TdApi.Messages)?.messages ?: break
-                if (msgs.isEmpty()) break
 
-                var reachedWatermark = false
-                for (msg in msgs) {
-                    if (msg.id <= wm) {
-                        reachedWatermark = true
+            // Pass A: Fetch new messages newer than watermark (or start initial backfill if wm == 0)
+            if ((chat.lastMessage?.id ?: 0L) > wm) {
+                var fromMsgId = 0L
+                var oldestInPass = Long.MAX_VALUE
+                var reachedEnd = false
+                while (chatMsgCount < MAX_MSGS_PER_CHAT_PER_RUN) {
+                    if (exportedMessages.isNotEmpty() && System.currentTimeMillis() - runStartMs >= MAX_RUN_DURATION_MS) {
                         break
                     }
-                    if (msg.id > maxSeenId) maxSeenId = msg.id
-                    val sender = msg.senderId
-                    if (sender is TdApi.MessageSenderUser) {
-                        referencedUserIds.add(sender.userId)
+                    val historyObj = TelegramClientManager.query(
+                        TdApi.GetChatHistory(chatId, fromMsgId, 0, PAGE_SIZE, false),
+                        timeoutSeconds = 6,
+                    )
+                    if (historyObj == null || historyObj is TdApi.Error) {
+                        consecutiveTimeouts++
+                        break
                     }
-                    exportedMessages.add(extractMessageRow(chatId, msg))
-                    chatMsgCount++
+                    consecutiveTimeouts = 0
+                    val msgs = (historyObj as? TdApi.Messages)?.messages ?: break
+                    if (msgs.isEmpty()) {
+                        reachedEnd = true
+                        break
+                    }
+                    var hitWm = false
+                    for (msg in msgs) {
+                        if (msg.id <= wm) {
+                            hitWm = true
+                            break
+                        }
+                        if (msg.id > newWm) newWm = msg.id
+                        if (msg.id < oldestInPass) oldestInPass = msg.id
+                        val sender = msg.senderId
+                        if (sender is TdApi.MessageSenderUser) referencedUserIds.add(sender.userId)
+                        exportedMessages.add(extractMessageRow(chatId, msg))
+                        chatMsgCount++
+                    }
+                    val oldestInPage = msgs.last().id
+                    if (hitWm || oldestInPage == fromMsgId) {
+                        reachedEnd = true
+                        break
+                    }
+                    fromMsgId = oldestInPage
+                    Thread.sleep(30)
                 }
-                val oldestInPage = msgs.last().id
-                if (reachedWatermark || oldestInPage == fromMsgId) break
-                fromMsgId = oldestInPage
-                Thread.sleep(40)
+                if (wm == 0L) {
+                    newBf = if (reachedEnd || oldestInPass == Long.MAX_VALUE) 0L else oldestInPass
+                }
             }
-            if (chatComplete && maxSeenId > wm) {
-                newWatermarks[chatId] = maxSeenId
+
+            // Pass B: Resume older-history backfill if chat still has an active backfill cursor
+            if (existingBf > 0L && chatMsgCount < MAX_MSGS_PER_CHAT_PER_RUN) {
+                var fromMsgId = existingBf
+                var reachedBeginning = false
+                while (chatMsgCount < MAX_MSGS_PER_CHAT_PER_RUN) {
+                    if (exportedMessages.isNotEmpty() && System.currentTimeMillis() - runStartMs >= MAX_RUN_DURATION_MS) {
+                        break
+                    }
+                    val historyObj = TelegramClientManager.query(
+                        TdApi.GetChatHistory(chatId, fromMsgId, 0, PAGE_SIZE, false),
+                        timeoutSeconds = 6,
+                    )
+                    if (historyObj == null || historyObj is TdApi.Error) {
+                        consecutiveTimeouts++
+                        break
+                    }
+                    consecutiveTimeouts = 0
+                    val msgs = (historyObj as? TdApi.Messages)?.messages ?: break
+                    if (msgs.isEmpty()) {
+                        reachedBeginning = true
+                        break
+                    }
+                    for (msg in msgs) {
+                        if (msg.id >= fromMsgId) continue
+                        val sender = msg.senderId
+                        if (sender is TdApi.MessageSenderUser) referencedUserIds.add(sender.userId)
+                        exportedMessages.add(extractMessageRow(chatId, msg))
+                        chatMsgCount++
+                    }
+                    val oldestInPage = msgs.last().id
+                    if (oldestInPage >= fromMsgId) {
+                        reachedBeginning = true
+                        break
+                    }
+                    fromMsgId = oldestInPage
+                    Thread.sleep(30)
+                }
+                newBf = if (reachedBeginning) 0L else fromMsgId
             }
-            Log.i(TAG, "Telegram delta: chat ${idx + 1}/${chatPairs.size} '${chat.title}' -> $chatMsgCount msgs (complete=$chatComplete)")
+
+            if (newWm != wm || newBf != existingBf) {
+                cursorUpdates[chatId] = newWm to newBf
+            }
+            Log.i(TAG, "Telegram delta: chat ${idx + 1}/${loadedChats.size} '${chat.title}' -> $chatMsgCount msgs (wm=$newWm, bf=$newBf)")
             if (consecutiveTimeouts >= 3) {
                 Log.w(TAG, "Telegram delta: pausing batch after 3 consecutive TDLib timeouts")
                 break
@@ -204,7 +278,7 @@ object TelegramDeltaExporter {
         }
 
         if (exportedMessages.isEmpty()) {
-            Log.i(TAG, "Telegram delta: 0 new messages across ${chatPairs.size} chats (skipped)")
+            Log.i(TAG, "Telegram delta: 0 new messages across ${loadedChats.size} pending chats (skipped)")
             return emptyList()
         }
 
@@ -242,14 +316,14 @@ object TelegramDeltaExporter {
         writeDeltaDatabase(outFile, exportedUsers, exportedChats, exportedMessages)
 
         val itemId = "telegram_delta_$stamp"
-        pendingWatermarks[itemId] = newWatermarks
+        pendingCursors[itemId] = cursorUpdates
         Log.i(
             TAG,
             "Telegram delta: exported ${exportedMessages.size} messages, ${exportedChats.size} chats, " +
                 "${exportedUsers.size} users -> ${outFile.name} (${outFile.length()} bytes)",
         )
 
-        return listOf(
+        listOf(
             DiscoveredMediaItem(
                 id = itemId,
                 contentUri = null,
@@ -267,14 +341,16 @@ object TelegramDeltaExporter {
     }
 
     fun commitWatermark(context: Context, itemId: String) {
-        val updates = pendingWatermarks.remove(itemId) ?: return
+        val updates = pendingCursors.remove(itemId) ?: return
         val editor = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
         editor.putInt(KEY_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION)
-        for ((chatId, msgId) in updates) {
-            editor.putLong("$KEY_WATERMARKS_PREFIX$chatId", msgId)
+        for ((chatId, pair) in updates) {
+            val (wm, bf) = pair
+            editor.putLong("$KEY_WATERMARKS_PREFIX$chatId", wm)
+            editor.putLong("$KEY_BACKFILL_PREFIX$chatId", bf)
         }
         editor.apply()
-        Log.i(TAG, "Telegram delta: committed watermarks for ${updates.size} chats ($itemId)")
+        Log.i(TAG, "Telegram delta: committed cursors for ${updates.size} chats ($itemId)")
     }
 
     private fun writeDeltaDatabase(

@@ -75,7 +75,13 @@ def main() -> int:
             whatsapp = wa_section
         tg_section = data.get("telegram", {})
         if isinstance(tg_section, dict):
-            telegram = tg_section
+            telegram = dict(tg_section)
+        profile_name = os.environ.get("UBACK_PROFILE", "").strip().lower()
+        profiles = data.get("profiles", {})
+        if profile_name and isinstance(profiles, dict):
+            prof_cfg = profiles.get(profile_name, {})
+            if isinstance(prof_cfg, dict) and prof_cfg.get("enable_telegram") is False:
+                telegram = {"enabled": False}
         print(f"Loaded compile-time defaults from {config_path}")
     else:
         print(
