@@ -22,6 +22,6 @@ backup_key_64 = ""
 # Optional: Compile-time flag to include Telegram incremental chat delta support.
 # When enabled = true, provide your Telegram API credentials from https://my.telegram.org.
 [telegram]
-enabled = false
+enabled = true
 api_id = ""
 api_hash = ""

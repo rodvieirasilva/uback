@@ -101,13 +101,24 @@ Under **Media Sources → WhatsApp** (and **WhatsApp Business**), UBack supports
   # Saves dist-local/uback-vX.Y.Z-myphone.apk (gitignored) and copies to /sdcard/Download/
   ```
 
-## Telegram Messages (Optional Compile-Time Flag)
+## Telegram Messages (`UBACK_ENABLE_TELEGRAM`)
 
 Unlike WhatsApp, **Telegram** stores its local message database (`cache4.db`) inside private app storage (`/data/data/org.telegram.messenger/files/`), which Android blocks other apps from reading without root.
 
-- **Option A — Incremental Telegram Sync (`UBACK_ENABLE_TELEGRAM`)**:
-  - Disabled by default (`enabled = false`) to keep the standard APK lightweight.
-  - To enable it in your own build, set `[telegram] enabled = true` with your `api_id` and `api_hash` from `https://my.telegram.org` in `config.toml` (or pass `--dart-define=UBACK_ENABLE_TELEGRAM=true`). This exposes **Telegram → Incremental Chat Deltas (.db)** (`telegram.deltas`).
+- **Option A — Incremental Telegram Sync (`UBACK_ENABLE_TELEGRAM`, enabled by default)**:
+  1. **Get your Telegram `api_id` and `api_hash`** *(Note: you do **not** need a `@BotFather` bot — bots cannot read your personal 1-on-1 chat history; you need a Telegram Client API app)*:
+     - Open [https://my.telegram.org](https://my.telegram.org) and sign in with your phone number + confirmation code.
+     - Click **API development tools** and create a new application (any app title/short name, e.g. `UBack`, Platform: `Android`).
+     - Copy your **App `api_id`** (numeric) and **App `api_hash`** (32-character hex string).
+  2. **Configure `config.toml` (never committed)**:
+     ```toml
+     [telegram]
+     enabled = true
+     api_id = "12345678"
+     api_hash = "0123456789abcdef0123456789abcdef"
+     ```
+     *(To exclude Telegram from a custom build, set `enabled = false` or `--dart-define=UBACK_ENABLE_TELEGRAM=false`.)*
+  3. **Enable in UBack**: Expand **Media Sources → Telegram** and toggle **Incremental Chat Deltas (.db)** (`telegram.deltas`).
 - **Option B — Telegram Desktop Export (Zero API)**:
   - Export chats from **Telegram Desktop** (`Settings → Advanced → Export Telegram data`) and back up that folder via UBack's **Custom Folders**.
 

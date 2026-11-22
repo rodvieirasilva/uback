@@ -4,8 +4,8 @@ import 'package:uback/core/utils/path_sanitizer.dart';
 void main() {
   group('PathSanitizer.sanitizeDeviceName', () {
     test('matches spec examples', () {
-      expect(PathSanitizer.sanitizeDeviceName("Alice's Phone"), 'alice');
-      expect(PathSanitizer.sanitizeDeviceName("Rodrigo's phone"), 'rodrigo');
+      expect(PathSanitizer.sanitizeDeviceName("Joao's Phone"), 'joao');
+      expect(PathSanitizer.sanitizeDeviceName("John's phone"), 'john');
     });
 
     test('handles curly apostrophes, case variations, spaces and special chars', () {
@@ -39,11 +39,11 @@ void main() {
     test('handles screenshots, nested whatsapp/recordings subpaths, and slashes', () {
       final ssPath = PathSanitizer.buildRelativeRemoteDir(
         basePath: '/local/phone/',
-        deviceFolder: "Alice's phone",
+        deviceFolder: "Joao's phone",
         sourceFolder: 'Screenshots',
         createdAt: DateTime(2023, 11, 5),
       );
-      expect(ssPath, 'local/phone/alice/screenshots/2023/11');
+      expect(ssPath, 'local/phone/joao/screenshots/2023/11');
 
       final waPath = PathSanitizer.buildRelativeRemoteDir(
         basePath: 'local/phone',

@@ -99,7 +99,7 @@ def main() -> int:
         "UBACK_SMB_PASSWORD": str(smb.get("password", "")),
         "UBACK_SMB_DOMAIN": str(smb.get("domain", "")),
         "UBACK_WHATSAPP_KEY": whatsapp_key,
-        "UBACK_ENABLE_TELEGRAM": "true" if bool(telegram.get("enabled", False)) else "false",
+        "UBACK_ENABLE_TELEGRAM": "true" if bool(telegram.get("enabled", True)) else "false",
         "UBACK_TELEGRAM_API_ID": str(telegram.get("api_id", "")),
         "UBACK_TELEGRAM_API_HASH": str(telegram.get("api_hash", "")),
         "UBACK_APP_VERSION": read_pubspec_version(repo_root),
