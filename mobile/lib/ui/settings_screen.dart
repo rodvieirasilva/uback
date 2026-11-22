@@ -1,4 +1,3 @@
-import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../core/backup/backup_controller.dart';
@@ -273,134 +272,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SettingsSectionDivider(),
-        SettingsSectionHeader(
-          title: 'DESTINATIONS',
-          trailing: withTestId(
-            AppTestKeys.settingsPrimaryDestToggleId,
-            child: Switch(
-              key: AppTestKeys.settingsPrimaryDestToggle,
-              value: _primaryDestinationEnabled,
-              onChanged: (val) => setState(() => _primaryDestinationEnabled = val),
-            ),
-          ),
-        ),
+        const SettingsSectionHeader(title: 'DESTINATIONS'),
         const SizedBox(height: 10),
-        withTestId(
-          AppTestKeys.settingsDestinationTypeId,
-          child: DropdownButtonFormField<String>(
-            key: AppTestKeys.settingsDestinationType,
-            initialValue: _destinationType,
-            decoration: const InputDecoration(labelText: 'Destination Type'),
-            items: [
-              for (final dest in ctrl.availableDestinations)
-                DropdownMenuItem<String>(
-                  value: dest.id,
-                  child: Text(dest.displayName),
-                ),
-            ],
-            onChanged: (val) {
-              if (val != null) setState(() => _destinationType = val);
-            },
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              flex: 3,
-              child: withTestId(
-                AppTestKeys.settingsHostId,
-                child: TextField(
-                  key: AppTestKeys.settingsHost,
-                  controller: _hostCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'SMB Host / IP',
-                    hintText: '192.168.1.100',
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: withTestId(
-                AppTestKeys.settingsPortId,
-                child: TextField(
-                  key: AppTestKeys.settingsPort,
-                  controller: _portCtrl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(labelText: 'Port', hintText: '445'),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        withTestId(
-          AppTestKeys.settingsShareId,
-          child: TextField(
-            key: AppTestKeys.settingsShare,
-            controller: _shareCtrl,
-            decoration: const InputDecoration(labelText: 'Share Name', hintText: 'safe'),
-          ),
-        ),
-        const SizedBox(height: 12),
-        withTestId(
-          AppTestKeys.settingsBasePathId,
-          child: TextField(
-            key: AppTestKeys.settingsBasePath,
-            controller: _basePathCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Base Path inside Share',
-              hintText: 'local/phone',
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        withTestId(
-          AppTestKeys.settingsUsernameId,
-          child: TextField(
-            key: AppTestKeys.settingsUsername,
-            controller: _usernameCtrl,
-            decoration: const InputDecoration(labelText: 'Username'),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SecretTextField(
-          testId: AppTestKeys.settingsPasswordId,
-          fieldKey: AppTestKeys.settingsPassword,
-          controller: _passwordCtrl,
-          labelText: 'Password',
-        ),
-        const SizedBox(height: 12),
-        withTestId(
-          AppTestKeys.settingsDomainId,
-          child: TextField(
-            key: AppTestKeys.settingsDomain,
-            controller: _domainCtrl,
-            decoration: const InputDecoration(labelText: 'Domain / Workgroup (optional)'),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerRight,
-          child: withTestId(
-            AppTestKeys.settingsTestConnectionId,
-            child: OutlinedButton.icon(
-              key: AppTestKeys.settingsTestConnection,
-              onPressed: ctrl.testingConnection
-                  ? null
-                  : () => ctrl.testConnection(_collectSettings()),
-              icon: ctrl.testingConnection
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.lan_outlined, size: 18),
-              label: const Text('Test SMB', maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-          ),
+        DestinationFormCard(
+          destinationType: _destinationType,
+          availableDestinations: ctrl.availableDestinations,
+          onDestinationTypeChanged: (val) => setState(() => _destinationType = val),
+          enabled: _primaryDestinationEnabled,
+          onEnabledChanged: (val) => setState(() => _primaryDestinationEnabled = val),
+          hostCtrl: _hostCtrl,
+          portCtrl: _portCtrl,
+          shareCtrl: _shareCtrl,
+          basePathCtrl: _basePathCtrl,
+          usernameCtrl: _usernameCtrl,
+          passwordCtrl: _passwordCtrl,
+          domainCtrl: _domainCtrl,
+          testingConnection: ctrl.testingConnection,
+          onTestConnection: () => ctrl.testConnection(_collectSettings()),
         ),
         if (ctrl.connectionResult != null) ...[
           const SizedBox(height: 10),

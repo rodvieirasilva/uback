@@ -1,8 +1,193 @@
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/backup/backup_destination.dart';
 import '../../core/config/smb_destination_config.dart';
 import '../../core/testing/test_keys.dart';
+import 'settings_components.dart';
+
+/// Modular card for configuring an inline SMB / NAS destination with its own enable/disable toggle.
+class DestinationFormCard extends StatelessWidget {
+  final String destinationType;
+  final List<BackupDestination> availableDestinations;
+  final ValueChanged<String> onDestinationTypeChanged;
+  final bool enabled;
+  final ValueChanged<bool> onEnabledChanged;
+  final TextEditingController hostCtrl;
+  final TextEditingController portCtrl;
+  final TextEditingController shareCtrl;
+  final TextEditingController basePathCtrl;
+  final TextEditingController usernameCtrl;
+  final TextEditingController passwordCtrl;
+  final TextEditingController domainCtrl;
+  final bool testingConnection;
+  final VoidCallback onTestConnection;
+
+  const DestinationFormCard({
+    super.key,
+    required this.destinationType,
+    required this.availableDestinations,
+    required this.onDestinationTypeChanged,
+    required this.enabled,
+    required this.onEnabledChanged,
+    required this.hostCtrl,
+    required this.portCtrl,
+    required this.shareCtrl,
+    required this.basePathCtrl,
+    required this.usernameCtrl,
+    required this.passwordCtrl,
+    required this.domainCtrl,
+    required this.testingConnection,
+    required this.onTestConnection,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('SMB / NAS', style: theme.textTheme.titleSmall),
+                ),
+                withTestId(
+                  AppTestKeys.settingsPrimaryDestToggleId,
+                  child: Switch(
+                    key: AppTestKeys.settingsPrimaryDestToggle,
+                    value: enabled,
+                    onChanged: onEnabledChanged,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            withTestId(
+              AppTestKeys.settingsDestinationTypeId,
+              child: DropdownButtonFormField<String>(
+                key: AppTestKeys.settingsDestinationType,
+                initialValue: destinationType,
+                decoration: const InputDecoration(labelText: 'Destination Type'),
+                items: [
+                  for (final dest in availableDestinations)
+                    DropdownMenuItem<String>(
+                      value: dest.id,
+                      child: Text(dest.displayName),
+                    ),
+                ],
+                onChanged: (val) {
+                  if (val != null) onDestinationTypeChanged(val);
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: withTestId(
+                    AppTestKeys.settingsHostId,
+                    child: TextField(
+                      key: AppTestKeys.settingsHost,
+                      controller: hostCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'SMB Host / IP',
+                        hintText: '192.168.1.100',
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: withTestId(
+                    AppTestKeys.settingsPortId,
+                    child: TextField(
+                      key: AppTestKeys.settingsPort,
+                      controller: portCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(labelText: 'Port', hintText: '445'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            withTestId(
+              AppTestKeys.settingsShareId,
+              child: TextField(
+                key: AppTestKeys.settingsShare,
+                controller: shareCtrl,
+                decoration: const InputDecoration(labelText: 'Share Name', hintText: 'safe'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            withTestId(
+              AppTestKeys.settingsBasePathId,
+              child: TextField(
+                key: AppTestKeys.settingsBasePath,
+                controller: basePathCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Base Path inside Share',
+                  hintText: 'local/phone',
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            withTestId(
+              AppTestKeys.settingsUsernameId,
+              child: TextField(
+                key: AppTestKeys.settingsUsername,
+                controller: usernameCtrl,
+                decoration: const InputDecoration(labelText: 'Username'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SecretTextField(
+              testId: AppTestKeys.settingsPasswordId,
+              fieldKey: AppTestKeys.settingsPassword,
+              controller: passwordCtrl,
+              labelText: 'Password',
+            ),
+            const SizedBox(height: 12),
+            withTestId(
+              AppTestKeys.settingsDomainId,
+              child: TextField(
+                key: AppTestKeys.settingsDomain,
+                controller: domainCtrl,
+                decoration: const InputDecoration(labelText: 'Domain / Workgroup (optional)'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: withTestId(
+                AppTestKeys.settingsTestConnectionId,
+                child: OutlinedButton.icon(
+                  key: AppTestKeys.settingsTestConnection,
+                  onPressed: testingConnection ? null : onTestConnection,
+                  icon: testingConnection
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.lan_outlined, size: 18),
+                  label: const Text('Test SMB', maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// Manages additional SMB NAS destinations with add, enable/disable, test, and remove controls.
 class ExtraDestinationsSection extends StatelessWidget {
