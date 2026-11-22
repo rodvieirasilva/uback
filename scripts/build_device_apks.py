@@ -98,7 +98,15 @@ def main() -> int:
     version = parse_config.read_pubspec_version(repo_root)
     dist_dir = repo_root / "dist-local"
     dist_dir.mkdir(parents=True, exist_ok=True)
-    apk_src = repo_root / "mobile" / "build" / "app" / "outputs" / "flutter-apk" / "app-release.apk"
+    apk_src = (
+        repo_root
+        / "mobile"
+        / "build"
+        / "app"
+        / "outputs"
+        / "flutter-apk"
+        / "app-arm64-v8a-release.apk"
+    )
 
     need_adb = args.push_downloads or bool(args.install_profile)
     adb_serial = detect_adb_device(args.adb_serial) if need_adb else None
@@ -126,10 +134,12 @@ def main() -> int:
                 "build",
                 "apk",
                 "--release",
+                "--split-per-abi",
                 "--target-platform=android-arm64",
                 "--dart-define-from-file=dart_defines.json",
             ],
             cwd=repo_root / "mobile",
+            env=env,
             check=True,
         )
 
