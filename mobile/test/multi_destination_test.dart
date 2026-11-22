@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:uback/core/config/app_config.dart';
 import 'package:uback/core/config/smb_destination_config.dart';
 import 'package:uback/core/testing/test_keys.dart';
+import 'package:uback/ui/widgets/connectors_section.dart';
 import 'package:uback/ui/widgets/destinations_section.dart';
 
 void main() {
@@ -136,5 +137,42 @@ void main() {
     await tester.tap(find.byKey(AppTestKeys.settingsDestinationRemove(id)));
     await tester.pumpAndSettle();
     expect(list, isEmpty);
+  });
+
+  testWidgets('ConnectorsSection hides Telegram when enableTelegramOverride is false', (tester) async {
+    final waCtrl = TextEditingController();
+    final idCtrl = TextEditingController();
+    final hashCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ConnectorsSection(
+              whatsappKeyCtrl: waCtrl,
+              onTestWhatsapp: () {},
+              telegramApiIdCtrl: idCtrl,
+              telegramApiHashCtrl: hashCtrl,
+              telegramPasswordCtrl: passCtrl,
+              telegramAuthState: 'uninitialized',
+              onConnectTelegram: () {},
+              onTestTelegram: () {},
+              onDisconnectTelegram: () {},
+              enableTelegramOverride: false,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('WHATSAPP'), findsOneWidget);
+    expect(find.text('TELEGRAM'), findsNothing);
+    expect(find.byKey(AppTestKeys.settingsTelegramApiId), findsNothing);
+
+    waCtrl.dispose();
+    idCtrl.dispose();
+    hashCtrl.dispose();
+    passCtrl.dispose();
   });
 }

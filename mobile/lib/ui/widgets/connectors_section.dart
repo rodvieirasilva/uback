@@ -16,6 +16,7 @@ class ConnectorsSection extends StatelessWidget {
   final VoidCallback onConnectTelegram;
   final VoidCallback onTestTelegram;
   final VoidCallback onDisconnectTelegram;
+  final bool? enableTelegramOverride;
 
   const ConnectorsSection({
     super.key,
@@ -28,10 +29,12 @@ class ConnectorsSection extends StatelessWidget {
     required this.onConnectTelegram,
     required this.onTestTelegram,
     required this.onDisconnectTelegram,
+    this.enableTelegramOverride,
   });
 
   @override
   Widget build(BuildContext context) {
+    final showTelegram = enableTelegramOverride ?? CompileTimeDefaults.enableTelegram;
     final isTelegramConnected = telegramAuthState == 'ready';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -58,7 +61,7 @@ class ConnectorsSection extends StatelessWidget {
             ),
           ),
         ),
-        if (CompileTimeDefaults.enableTelegram) ...[
+        if (showTelegram) ...[
           const SettingsSectionDivider(),
           const SettingsSectionHeader(title: 'TELEGRAM'),
           const SizedBox(height: 10),

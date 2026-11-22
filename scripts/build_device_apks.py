@@ -52,6 +52,22 @@ def detect_adb_device(explicit_serial: str | None) -> str | None:
     return None
 
 
+def verify_apk(apk_path: Path) -> None:
+    """Verify APK zip integrity and APK Signature Scheme v2/v3 via apksigner."""
+    import zipfile
+
+    with zipfile.ZipFile(apk_path, "r") as zf:
+        bad = zf.testzip()
+        if bad is not None:
+            raise RuntimeError(f"Corrupt zip entry in {apk_path}: {bad}")
+    sdk = Path(os.environ.get("ANDROID_HOME", str(Path.home() / "Android/Sdk")))
+    bt_dirs = sorted((sdk / "build-tools").glob("*")) if (sdk / "build-tools").exists() else []
+    if bt_dirs:
+        apksigner = bt_dirs[-1] / "apksigner"
+        if apksigner.exists():
+            subprocess.run([str(apksigner), "verify", str(apk_path)], check=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build per-device credentialed APKs from WHATSAPP_64DIGI_* env vars.")
     parser.add_argument(
@@ -105,15 +121,23 @@ def main() -> int:
             check=True,
         )
         subprocess.run(
-            ["flutter", "build", "apk", "--release", "--dart-define-from-file=dart_defines.json"],
+            [
+                "flutter",
+                "build",
+                "apk",
+                "--release",
+                "--target-platform=android-arm64",
+                "--dart-define-from-file=dart_defines.json",
+            ],
             cwd=repo_root / "mobile",
             check=True,
         )
 
         out_apk = dist_dir / f"uback-v{version}-{device_tag}.apk"
         shutil.copy2(apk_src, out_apk)
+        verify_apk(out_apk)
         built_apks.append(out_apk)
-        print(f"Saved {out_apk} ({out_apk.stat().st_size / (1024 * 1024):.1f} MB)")
+        print(f"Saved & verified {out_apk} ({out_apk.stat().st_size / (1024 * 1024):.1f} MB)")
 
         if adb_serial and args.push_downloads:
             remote = f"/sdcard/Download/{out_apk.name}"

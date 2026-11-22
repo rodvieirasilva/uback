@@ -33,6 +33,11 @@ android {
         versionCode = computeVersionCode(flutter.versionName)
         versionName = flutter.versionName.substringBefore('+')
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        if (project.findProperty("uback.arm64Only") == "true") {
+            ndk {
+                abiFilters += listOf("arm64-v8a")
+            }
+        }
     }
 
     buildTypes {
@@ -46,6 +51,9 @@ android {
     }
 
     packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             excludes += setOf(
                 "META-INF/DEPENDENCIES",
