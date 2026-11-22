@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -40,7 +42,7 @@ android {
             ?: "${System.getProperty("user.home")}/.uback-signing/keystore.properties"
         val ksPropsFile = file(ksPropsPath)
         if (ksPropsFile.exists()) {
-            val props = java.util.Properties().apply {
+            val props = Properties().apply {
                 ksPropsFile.inputStream().use { load(it) }
             }
             create("release") {
