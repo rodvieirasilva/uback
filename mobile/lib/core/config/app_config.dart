@@ -23,10 +23,16 @@ class CompileTimeDefaults {
   static const String domain = String.fromEnvironment('UBACK_SMB_DOMAIN', defaultValue: '');
   static const String whatsappKey =
       String.fromEnvironment('UBACK_WHATSAPP_KEY', defaultValue: '');
+  static const bool enableTelegram =
+      bool.fromEnvironment('UBACK_ENABLE_TELEGRAM', defaultValue: false);
+  static const String telegramApiId =
+      String.fromEnvironment('UBACK_TELEGRAM_API_ID', defaultValue: '');
+  static const String telegramApiHash =
+      String.fromEnvironment('UBACK_TELEGRAM_API_HASH', defaultValue: '');
   static const String e2eDeviceOverride =
       String.fromEnvironment('UBACK_E2E_DEVICE_OVERRIDE', defaultValue: '');
   static const String appVersion =
-      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.8');
+      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.9');
   static const String buildDate =
       String.fromEnvironment('UBACK_BUILD_DATE', defaultValue: '');
   static const String gitSha =

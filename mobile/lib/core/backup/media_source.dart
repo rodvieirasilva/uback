@@ -1,3 +1,4 @@
+import '../config/app_config.dart';
 import '../config/custom_folder_config.dart';
 import 'media_exporter.dart';
 import 'native_bridge.dart';
@@ -337,6 +338,14 @@ List<MediaSource> buildMediaSources(
           subtitle: 'Telegram Documents',
           destinationSlug: 'telegram/documents',
         ),
+        if (CompileTimeDefaults.enableTelegram)
+          BridgeMediaSource(
+            bridge: bridge,
+            id: 'telegram.deltas',
+            displayName: 'Incremental Chat Deltas (.db)',
+            subtitle: 'Syncs new Telegram messages via TDLib',
+            destinationSlug: 'telegram/deltas',
+          ),
       ],
     ),
     BridgeMediaSource(

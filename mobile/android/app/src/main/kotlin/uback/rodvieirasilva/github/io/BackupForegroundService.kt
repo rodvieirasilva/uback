@@ -611,11 +611,10 @@ class BackupForegroundService : Service() {
                     completedBytes += item.sizeBytes
                     emitProgress(state = "running", stage = "verified", currentFile = item.fileName)
                 } catch (_: InterruptedException) {
-                    if (item.isSnapshot) runCatching { File(item.localPath).delete() }
                     emitProgress(state = "cancelled", stage = "cancelled", currentFile = item.fileName)
                     return
                 } catch (e: Throwable) {
-                    if (item.isSnapshot) runCatching { File(item.localPath).delete() }
+                    // Keep snapshot temp file on failure so "Retry Errors" can re-upload it.
                     android.util.Log.e("UBack", "Backup failed for ${item.fileName}", e)
                     failed++
                     errors.add(

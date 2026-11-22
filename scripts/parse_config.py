@@ -59,6 +59,7 @@ def main() -> int:
 
     smb: dict[str, object] = {}
     whatsapp: dict[str, object] = {}
+    telegram: dict[str, object] = {}
     destination_type = "smb_nas"
     if config_path.exists():
         with config_path.open("rb") as f:
@@ -72,6 +73,9 @@ def main() -> int:
         wa_section = data.get("whatsapp", {})
         if isinstance(wa_section, dict):
             whatsapp = wa_section
+        tg_section = data.get("telegram", {})
+        if isinstance(tg_section, dict):
+            telegram = tg_section
         print(f"Loaded compile-time defaults from {config_path}")
     else:
         print(
@@ -95,6 +99,9 @@ def main() -> int:
         "UBACK_SMB_PASSWORD": str(smb.get("password", "")),
         "UBACK_SMB_DOMAIN": str(smb.get("domain", "")),
         "UBACK_WHATSAPP_KEY": whatsapp_key,
+        "UBACK_ENABLE_TELEGRAM": "true" if bool(telegram.get("enabled", False)) else "false",
+        "UBACK_TELEGRAM_API_ID": str(telegram.get("api_id", "")),
+        "UBACK_TELEGRAM_API_HASH": str(telegram.get("api_hash", "")),
         "UBACK_APP_VERSION": read_pubspec_version(repo_root),
         "UBACK_BUILD_DATE": read_build_date(repo_root),
         "UBACK_GIT_SHA": read_git_sha(repo_root),

@@ -101,6 +101,16 @@ Under **Media Sources → WhatsApp** (and **WhatsApp Business**), UBack supports
   # Saves dist-local/uback-vX.Y.Z-myphone.apk (gitignored) and copies to /sdcard/Download/
   ```
 
+## Telegram Messages (Optional Compile-Time Flag)
+
+Unlike WhatsApp, **Telegram** stores its local message database (`cache4.db`) inside private app storage (`/data/data/org.telegram.messenger/files/`), which Android blocks other apps from reading without root.
+
+- **Option A — Incremental Telegram Sync (`UBACK_ENABLE_TELEGRAM`)**:
+  - Disabled by default (`enabled = false`) to keep the standard APK lightweight.
+  - To enable it in your own build, set `[telegram] enabled = true` with your `api_id` and `api_hash` from `https://my.telegram.org` in `config.toml` (or pass `--dart-define=UBACK_ENABLE_TELEGRAM=true`). This exposes **Telegram → Incremental Chat Deltas (.db)** (`telegram.deltas`).
+- **Option B — Telegram Desktop Export (Zero API)**:
+  - Export chats from **Telegram Desktop** (`Settings → Advanced → Export Telegram data`) and back up that folder via UBack's **Custom Folders**.
+
 ## Quick Start (Build from Source)
 
 ### 1. Install Toolchain with `mise`

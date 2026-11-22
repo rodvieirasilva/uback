@@ -18,3 +18,10 @@ domain = ""
 # incremental SQLite chat deltas (`msgstore_delta_*.db`). Leave empty to configure in Settings.
 [whatsapp]
 backup_key_64 = ""
+
+# Optional: Compile-time flag to include Telegram incremental chat delta support.
+# When enabled = true, provide your Telegram API credentials from https://my.telegram.org.
+[telegram]
+enabled = false
+api_id = ""
+api_hash = ""
