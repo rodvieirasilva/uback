@@ -76,6 +76,7 @@ class CompileTimeDefaults {
       whatsappKey: whatsappKey,
       telegramApiId: telegramApiId,
       telegramApiHash: telegramApiHash,
+      telegramPhone: telegramPhone,
       telegramPassword: telegramPassword,
       deviceFolderOverride: e2eDeviceOverride,
       enabledSourceIds: defaultEnabledMediaSourceIds,
@@ -102,6 +103,7 @@ class AppSettings {
   final String whatsappKey;
   final String telegramApiId;
   final String telegramApiHash;
+  final String telegramPhone;
   final String telegramPassword;
   final bool primaryDestinationEnabled;
   final List<SmbDestinationConfig> extraDestinations;
@@ -128,6 +130,7 @@ class AppSettings {
     this.whatsappKey = '',
     this.telegramApiId = '',
     this.telegramApiHash = '',
+    this.telegramPhone = '',
     this.telegramPassword = '',
     this.primaryDestinationEnabled = true,
     this.extraDestinations = const [],
@@ -208,6 +211,7 @@ class AppSettings {
     String? whatsappKey,
     String? telegramApiId,
     String? telegramApiHash,
+    String? telegramPhone,
     String? telegramPassword,
     bool? primaryDestinationEnabled,
     List<SmbDestinationConfig>? extraDestinations,
@@ -234,6 +238,7 @@ class AppSettings {
       whatsappKey: whatsappKey ?? this.whatsappKey,
       telegramApiId: telegramApiId ?? this.telegramApiId,
       telegramApiHash: telegramApiHash ?? this.telegramApiHash,
+      telegramPhone: telegramPhone ?? this.telegramPhone,
       telegramPassword: telegramPassword ?? this.telegramPassword,
       primaryDestinationEnabled: primaryDestinationEnabled ?? this.primaryDestinationEnabled,
       extraDestinations: extraDestinations ?? this.extraDestinations,
@@ -270,6 +275,7 @@ class AppSettingsRepository {
   static const _kSecretPass = 'uback_smb_password';
   static const _kSecretWhatsappKey = 'uback_whatsapp_key';
   static const _kTelegramApiId = 'uback_telegram_api_id';
+  static const _kTelegramPhone = 'uback_telegram_phone';
   static const _kSecretTelegramApiHash = 'uback_telegram_api_hash';
   static const _kSecretTelegramPassword = 'uback_telegram_password';
   static const _kPrimaryDestEnabled = 'uback_primary_dest_enabled';
@@ -335,6 +341,7 @@ class AppSettingsRepository {
     final domain = await _plainStore.read(_kDomain);
     final deviceOverride = await _plainStore.read(_kDeviceOverride);
     final telegramApiId = await _plainStore.read(_kTelegramApiId);
+    final telegramPhone = await _plainStore.read(_kTelegramPhone);
     final primaryDestEnabledRaw = await _plainStore.read(_kPrimaryDestEnabled);
     final smbParallelEnabledRaw = await _plainStore.read(_kSmbParallelEnabled);
     final extraDestinationsRaw = await _plainStore.read(_kExtraDestinations);
@@ -426,6 +433,7 @@ class AppSettingsRepository {
       whatsappKey: whatsappKey ?? _defaults.whatsappKey,
       telegramApiId: telegramApiId ?? _defaults.telegramApiId,
       telegramApiHash: telegramApiHash ?? _defaults.telegramApiHash,
+      telegramPhone: telegramPhone ?? _defaults.telegramPhone,
       telegramPassword: telegramPassword ?? _defaults.telegramPassword,
       primaryDestinationEnabled: primaryDestEnabledRaw != null
           ? primaryDestEnabledRaw == 'true'
@@ -453,6 +461,7 @@ class AppSettingsRepository {
     await _plainStore.write(_kDomain, settings.domain.trim());
     await _plainStore.write(_kDeviceOverride, settings.deviceFolderOverride.trim());
     await _plainStore.write(_kTelegramApiId, settings.telegramApiId.trim());
+    await _plainStore.write(_kTelegramPhone, settings.telegramPhone.trim());
     await _plainStore.write(
       _kPrimaryDestEnabled,
       settings.primaryDestinationEnabled.toString(),
@@ -499,6 +508,7 @@ class AppSettingsRepository {
       _kDomain,
       _kDeviceOverride,
       _kTelegramApiId,
+      _kTelegramPhone,
       _kPrimaryDestEnabled,
       _kSmbParallelEnabled,
       _kExtraDestinations,

@@ -34,6 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _whatsappKeyCtrl;
   late final TextEditingController _telegramApiIdCtrl;
   late final TextEditingController _telegramApiHashCtrl;
+  late final TextEditingController _telegramPhoneCtrl;
   late final TextEditingController _telegramPasswordCtrl;
   late final TextEditingController _deviceOverrideCtrl;
 
@@ -58,6 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _whatsappKeyCtrl = TextEditingController(text: s.whatsappKey);
     _telegramApiIdCtrl = TextEditingController(text: s.telegramApiId);
     _telegramApiHashCtrl = TextEditingController(text: s.telegramApiHash);
+    _telegramPhoneCtrl = TextEditingController(text: s.telegramPhone);
     _telegramPasswordCtrl = TextEditingController(text: s.telegramPassword);
     _primaryDestinationEnabled = s.primaryDestinationEnabled;
     _smbParallelEnabled = s.smbParallelEnabled;
@@ -77,6 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _whatsappKeyCtrl.dispose();
     _telegramApiIdCtrl.dispose();
     _telegramApiHashCtrl.dispose();
+    _telegramPhoneCtrl.dispose();
     _telegramPasswordCtrl.dispose();
     _deviceOverrideCtrl.dispose();
     super.dispose();
@@ -94,6 +97,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         whatsappKey: _whatsappKeyCtrl.text.trim(),
         telegramApiId: _telegramApiIdCtrl.text.trim(),
         telegramApiHash: _telegramApiHashCtrl.text.trim(),
+        telegramPhone: _telegramPhoneCtrl.text.trim(),
         telegramPassword: _telegramPasswordCtrl.text,
         primaryDestinationEnabled: _primaryDestinationEnabled,
         smbParallelEnabled: _smbParallelEnabled,
@@ -113,6 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _whatsappKeyCtrl.text = s.whatsappKey;
     _telegramApiIdCtrl.text = s.telegramApiId;
     _telegramApiHashCtrl.text = s.telegramApiHash;
+    _telegramPhoneCtrl.text = s.telegramPhone;
     _telegramPasswordCtrl.text = s.telegramPassword;
     setState(() {
       _primaryDestinationEnabled = s.primaryDestinationEnabled;
@@ -165,7 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       };
       final err = res['error'];
       if (state == 'waitPhoneNumber' || state == 'uninitialized') {
-        inputCtrl.text = CompileTimeDefaults.telegramPhone;
+        inputCtrl.text = _telegramPhoneCtrl.text.trim();
       } else if (state == 'waitPassword') {
         inputCtrl.text = _telegramPasswordCtrl.text.trim();
       } else {
@@ -318,6 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
           telegramApiIdCtrl: _telegramApiIdCtrl,
           telegramApiHashCtrl: _telegramApiHashCtrl,
+          telegramPhoneCtrl: _telegramPhoneCtrl,
           telegramPasswordCtrl: _telegramPasswordCtrl,
           telegramAuthState: _telegramAuthState,
           onConnectTelegram: _showTelegramConnectDialog,

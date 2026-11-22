@@ -144,6 +144,7 @@ void main() {
     final waCtrl = TextEditingController();
     final idCtrl = TextEditingController();
     final hashCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
     final passCtrl = TextEditingController();
 
     await tester.pumpWidget(
@@ -155,6 +156,7 @@ void main() {
               onTestWhatsapp: () {},
               telegramApiIdCtrl: idCtrl,
               telegramApiHashCtrl: hashCtrl,
+              telegramPhoneCtrl: phoneCtrl,
               telegramPasswordCtrl: passCtrl,
               telegramAuthState: 'uninitialized',
               onConnectTelegram: () {},
@@ -174,6 +176,7 @@ void main() {
     waCtrl.dispose();
     idCtrl.dispose();
     hashCtrl.dispose();
+    phoneCtrl.dispose();
     passCtrl.dispose();
   });
 

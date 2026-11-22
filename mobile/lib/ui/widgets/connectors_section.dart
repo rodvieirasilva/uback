@@ -11,6 +11,7 @@ class ConnectorsSection extends StatelessWidget {
   final VoidCallback onTestWhatsapp;
   final TextEditingController telegramApiIdCtrl;
   final TextEditingController telegramApiHashCtrl;
+  final TextEditingController telegramPhoneCtrl;
   final TextEditingController telegramPasswordCtrl;
   final String telegramAuthState;
   final VoidCallback onConnectTelegram;
@@ -24,6 +25,7 @@ class ConnectorsSection extends StatelessWidget {
     required this.onTestWhatsapp,
     required this.telegramApiIdCtrl,
     required this.telegramApiHashCtrl,
+    required this.telegramPhoneCtrl,
     required this.telegramPasswordCtrl,
     required this.telegramAuthState,
     required this.onConnectTelegram,
@@ -84,6 +86,19 @@ class ConnectorsSection extends StatelessWidget {
             fieldKey: AppTestKeys.settingsTelegramApiHash,
             controller: telegramApiHashCtrl,
             labelText: 'Telegram API Hash (optional)',
+          ),
+          const SizedBox(height: 12),
+          withTestId(
+            AppTestKeys.settingsTelegramPhoneId,
+            child: TextField(
+              key: AppTestKeys.settingsTelegramPhone,
+              controller: telegramPhoneCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Telegram Phone Number (optional)',
+                hintText: '+5511999999999',
+              ),
+            ),
           ),
           const SizedBox(height: 12),
           SecretTextField(

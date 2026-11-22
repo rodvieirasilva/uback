@@ -64,6 +64,7 @@ abstract final class AppTestKeys {
   static const String settingsTestWhatsappId = 'settings_test_whatsapp_btn';
   static const String settingsTelegramApiIdId = 'settings_telegram_api_id_input';
   static const String settingsTelegramApiHashId = 'settings_telegram_api_hash_input';
+  static const String settingsTelegramPhoneId = 'settings_telegram_phone_input';
   static const String settingsTelegramPasswordId = 'settings_telegram_password_input';
   static const String settingsConnectTelegramId = 'settings_connect_telegram_btn';
   static const String settingsTestTelegramId = 'settings_test_telegram_btn';
@@ -144,6 +145,7 @@ abstract final class AppTestKeys {
   static const ValueKey<String> settingsTestWhatsapp = ValueKey(settingsTestWhatsappId);
   static const ValueKey<String> settingsTelegramApiId = ValueKey(settingsTelegramApiIdId);
   static const ValueKey<String> settingsTelegramApiHash = ValueKey(settingsTelegramApiHashId);
+  static const ValueKey<String> settingsTelegramPhone = ValueKey(settingsTelegramPhoneId);
   static const ValueKey<String> settingsTelegramPassword = ValueKey(settingsTelegramPasswordId);
   static const ValueKey<String> settingsConnectTelegram = ValueKey(settingsConnectTelegramId);
   static const ValueKey<String> settingsTestTelegram = ValueKey(settingsTestTelegramId);
