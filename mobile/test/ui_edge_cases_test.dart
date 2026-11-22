@@ -434,7 +434,7 @@ void main() {
     );
     await unconfigured.init();
     await unconfigured.startBackup();
-    expect(unconfigured.statusMessage, contains('Configure SMB NAS'));
+    expect(unconfigured.statusMessage, contains('Configure SMB'));
 
     final noSources = BackupController(
       settingsRepo: _repo(),

@@ -33,6 +33,7 @@
     <application
         android:label="UBack"
         tools:replace="android:label"
+        android:usesCleartextTraffic="true"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">

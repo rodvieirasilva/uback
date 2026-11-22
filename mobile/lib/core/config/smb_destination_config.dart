@@ -2,11 +2,13 @@ import 'dart:convert';
 
 import 'app_config.dart';
 
-/// Configuration for an SMB NAS backup destination.
+/// Configuration for a backup destination (SMB or S3 / S3-compatible).
 class SmbDestinationConfig {
   final String id;
+  final String type; // 'smb_nas' or 's3'
   final String name;
   final bool enabled;
+  final bool parallelEnabled;
   final String host;
   final int port;
   final String share;
@@ -17,8 +19,10 @@ class SmbDestinationConfig {
 
   const SmbDestinationConfig({
     required this.id,
+    this.type = 'smb_nas',
     required this.name,
     this.enabled = true,
+    this.parallelEnabled = false,
     required this.host,
     this.port = 445,
     required this.share,
@@ -28,19 +32,28 @@ class SmbDestinationConfig {
     this.domain = '',
   });
 
+  bool get isS3 => type == 's3';
+
+  String get typeLabel => isS3 ? 'S3' : 'SMB';
+
   bool get isConfigured => host.trim().isNotEmpty && share.trim().isNotEmpty;
 
   String get displaySummary {
     final cleanBase = basePath.trim().replaceAll(RegExp(r'^/+|/+$'), '');
     final suffix = cleanBase.isEmpty ? '' : '/$cleanBase';
+    if (isS3) {
+      return 's3://${share.trim()}$suffix (${host.trim()})';
+    }
     final portPart = port == 445 ? '' : ':$port';
     return 'smb://${host.trim()}$portPart/${share.trim()}$suffix';
   }
 
   SmbDestinationConfig copyWith({
     String? id,
+    String? type,
     String? name,
     bool? enabled,
+    bool? parallelEnabled,
     String? host,
     int? port,
     String? share,
@@ -51,8 +64,10 @@ class SmbDestinationConfig {
   }) =>
       SmbDestinationConfig(
         id: id ?? this.id,
+        type: type ?? this.type,
         name: name ?? this.name,
         enabled: enabled ?? this.enabled,
+        parallelEnabled: parallelEnabled ?? this.parallelEnabled,
         host: host ?? this.host,
         port: port ?? this.port,
         share: share ?? this.share,
@@ -62,9 +77,10 @@ class SmbDestinationConfig {
         domain: domain ?? this.domain,
       );
 
-  /// Projects this destination onto [base] so native SMB calls can execute against it.
+  /// Projects this destination onto [base] so native SMB/S3 calls can execute against it.
   AppSettings toAppSettings(AppSettings base) => base.copyWith(
-        destinationType: 'smb_nas',
+        destinationType: type,
+        smbParallelEnabled: parallelEnabled,
         host: host.trim(),
         port: port,
         share: share.trim(),
@@ -77,8 +93,10 @@ class SmbDestinationConfig {
   /// Public metadata (no credentials) for plain SharedPreferences storage.
   Map<String, dynamic> toPublicJson() => {
         'id': id,
+        'type': type,
         'name': name,
         'enabled': enabled,
+        'parallelEnabled': parallelEnabled,
         'host': host,
         'port': port,
         'share': share,
@@ -93,8 +111,10 @@ class SmbDestinationConfig {
   }) =>
       SmbDestinationConfig(
         id: (map['id'] ?? '').toString(),
+        type: (map['type'] ?? 'smb_nas').toString(),
         name: (map['name'] ?? '').toString(),
         enabled: map['enabled'] != false,
+        parallelEnabled: map['parallelEnabled'] == true,
         host: (map['host'] ?? '').toString(),
         port: (map['port'] is int)
             ? map['port'] as int

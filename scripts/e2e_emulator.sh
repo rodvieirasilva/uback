@@ -23,7 +23,9 @@ EMU_SERIAL=""
 TMP_DIR="$(mktemp -d /tmp/uback-e2e-XXXXXX)"
 SMB_ROOT="$TMP_DIR/smb_share"
 SEED_DIR="$TMP_DIR/seed"
-mkdir -p "$SMB_ROOT/$SMB_BASE_PATH" "$SEED_DIR"
+S3_ROOT="$TMP_DIR/s3_root"
+S3_PID=""
+mkdir -p "$SMB_ROOT/$SMB_BASE_PATH" "$SEED_DIR" "$S3_ROOT"
 
 cleanup() {
   local exit_code=$?
@@ -46,6 +48,10 @@ cleanup() {
   if [[ -n "$SMB_PID" ]] && kill -0 "$SMB_PID" 2>/dev/null; then
     kill "$SMB_PID" 2>/dev/null || true
     wait "$SMB_PID" 2>/dev/null || true
+  fi
+  if [[ -n "$S3_PID" ]] && kill -0 "$S3_PID" 2>/dev/null; then
+    kill "$S3_PID" 2>/dev/null || true
+    wait "$S3_PID" 2>/dev/null || true
   fi
   if [[ "$STARTED_EMULATOR" -eq 1 && "${KEEP_EMULATOR:-0}" != "1" ]]; then
     if [[ -n "$EMU_SERIAL" ]]; then
@@ -100,6 +106,12 @@ ensure_emulator() {
 }
 
 start_smb_server() {
+  echo "==> Starting local S3-compatible server on 0.0.0.0:9009..."
+  PYTHONUNBUFFERED=1 python3 "$REPO_ROOT/scripts/e2e_s3_server.py" \
+    --host 0.0.0.0 --port 9009 --dir "$S3_ROOT" \
+    >"$TMP_DIR/s3server.log" 2>&1 &
+  S3_PID=$!
+
   echo "==> Starting local SMB2 server on 0.0.0.0:$BACKEND_SMB_PORT..."
   PYTHONUNBUFFERED=1 uvx --from impacket smbserver.py -smb2support -debug -ip 0.0.0.0 -port "$BACKEND_SMB_PORT" \
     -username "$SMB_USER" -password "$SMB_PASS" "$SMB_SHARE" "$SMB_ROOT" \

@@ -6,13 +6,15 @@ import '../../core/config/smb_destination_config.dart';
 import '../../core/testing/test_keys.dart';
 import 'settings_components.dart';
 
-/// Modular card for configuring an inline SMB / NAS destination with its own enable/disable toggle.
+/// Modular card for configuring an inline SMB or S3 destination with its own enable/disable toggle.
 class DestinationFormCard extends StatelessWidget {
   final String destinationType;
   final List<BackupDestination> availableDestinations;
   final ValueChanged<String> onDestinationTypeChanged;
   final bool enabled;
   final ValueChanged<bool> onEnabledChanged;
+  final bool parallelEnabled;
+  final ValueChanged<bool> onParallelEnabledChanged;
   final TextEditingController hostCtrl;
   final TextEditingController portCtrl;
   final TextEditingController shareCtrl;
@@ -30,6 +32,8 @@ class DestinationFormCard extends StatelessWidget {
     required this.onDestinationTypeChanged,
     required this.enabled,
     required this.onEnabledChanged,
+    required this.parallelEnabled,
+    required this.onParallelEnabledChanged,
     required this.hostCtrl,
     required this.portCtrl,
     required this.shareCtrl,
@@ -44,6 +48,7 @@ class DestinationFormCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isS3 = destinationType == S3BackupDestination.typeId;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
@@ -54,7 +59,10 @@ class DestinationFormCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text('SMB / NAS', style: theme.textTheme.titleSmall),
+                  child: Text(
+                    isS3 ? 'S3 / S3-Compatible' : 'SMB',
+                    style: theme.textTheme.titleSmall,
+                  ),
                 ),
                 withTestId(
                   AppTestKeys.settingsPrimaryDestToggleId,
@@ -72,12 +80,13 @@ class DestinationFormCard extends StatelessWidget {
               child: DropdownButtonFormField<String>(
                 key: AppTestKeys.settingsDestinationType,
                 initialValue: destinationType,
+                isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Destination Type'),
                 items: [
                   for (final dest in availableDestinations)
                     DropdownMenuItem<String>(
                       value: dest.id,
-                      child: Text(dest.displayName),
+                      child: Text(dest.displayName, overflow: TextOverflow.ellipsis),
                     ),
                 ],
                 onChanged: (val) {
@@ -86,44 +95,60 @@ class DestinationFormCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: withTestId(
-                    AppTestKeys.settingsHostId,
-                    child: TextField(
-                      key: AppTestKeys.settingsHost,
-                      controller: hostCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'SMB Host / IP',
-                        hintText: '192.168.1.100',
+            if (isS3)
+              withTestId(
+                AppTestKeys.settingsHostId,
+                child: TextField(
+                  key: AppTestKeys.settingsHost,
+                  controller: hostCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'S3 Endpoint URL',
+                    hintText: 'http://192.168.1.100:9000',
+                  ),
+                ),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: withTestId(
+                      AppTestKeys.settingsHostId,
+                      child: TextField(
+                        key: AppTestKeys.settingsHost,
+                        controller: hostCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'SMB Host / IP',
+                          hintText: '192.168.1.100',
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: withTestId(
-                    AppTestKeys.settingsPortId,
-                    child: TextField(
-                      key: AppTestKeys.settingsPort,
-                      controller: portCtrl,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: const InputDecoration(labelText: 'Port', hintText: '445'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: withTestId(
+                      AppTestKeys.settingsPortId,
+                      child: TextField(
+                        key: AppTestKeys.settingsPort,
+                        controller: portCtrl,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        decoration: const InputDecoration(labelText: 'Port', hintText: '445'),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
             const SizedBox(height: 12),
             withTestId(
               AppTestKeys.settingsShareId,
               child: TextField(
                 key: AppTestKeys.settingsShare,
                 controller: shareCtrl,
-                decoration: const InputDecoration(labelText: 'Share Name', hintText: 'safe'),
+                decoration: InputDecoration(
+                  labelText: isS3 ? 'Bucket Name' : 'Share Name',
+                  hintText: 'backup',
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -132,9 +157,9 @@ class DestinationFormCard extends StatelessWidget {
               child: TextField(
                 key: AppTestKeys.settingsBasePath,
                 controller: basePathCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Base Path inside Share',
-                  hintText: 'local/phone',
+                decoration: InputDecoration(
+                  labelText: isS3 ? 'Key Prefix (optional)' : 'Base Path inside Share',
+                  hintText: 'phones',
                 ),
               ),
             ),
@@ -144,7 +169,7 @@ class DestinationFormCard extends StatelessWidget {
               child: TextField(
                 key: AppTestKeys.settingsUsername,
                 controller: usernameCtrl,
-                decoration: const InputDecoration(labelText: 'Username'),
+                decoration: InputDecoration(labelText: isS3 ? 'Access Key ID' : 'Username'),
               ),
             ),
             const SizedBox(height: 12),
@@ -152,7 +177,7 @@ class DestinationFormCard extends StatelessWidget {
               testId: AppTestKeys.settingsPasswordId,
               fieldKey: AppTestKeys.settingsPassword,
               controller: passwordCtrl,
-              labelText: 'Password',
+              labelText: isS3 ? 'Secret Access Key' : 'Password',
             ),
             const SizedBox(height: 12),
             withTestId(
@@ -160,9 +185,23 @@ class DestinationFormCard extends StatelessWidget {
               child: TextField(
                 key: AppTestKeys.settingsDomain,
                 controller: domainCtrl,
-                decoration: const InputDecoration(labelText: 'Domain / Workgroup (optional)'),
+                decoration: InputDecoration(
+                  labelText: isS3 ? 'Region (default: us-east-1)' : 'Domain / Workgroup (optional)',
+                  hintText: isS3 ? 'us-east-1' : null,
+                ),
               ),
             ),
+            if (!isS3) ...[
+              const SizedBox(height: 6),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Parallel small-file transfer'),
+                subtitle: const Text('Upload small files (<= 5 MB) concurrently'),
+                value: parallelEnabled,
+                onChanged: onParallelEnabledChanged,
+              ),
+            ],
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
@@ -177,8 +216,12 @@ class DestinationFormCard extends StatelessWidget {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.lan_outlined, size: 18),
-                  label: const Text('Test SMB', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      : Icon(isS3 ? Icons.cloud_outlined : Icons.lan_outlined, size: 18),
+                  label: Text(
+                    isS3 ? 'Test S3' : 'Test SMB',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
             ),
@@ -189,7 +232,7 @@ class DestinationFormCard extends StatelessWidget {
   }
 }
 
-/// Manages additional SMB NAS destinations with add, enable/disable, test, and remove controls.
+/// Manages additional SMB / S3 destinations with add, enable/disable, test, and remove controls.
 class ExtraDestinationsSection extends StatelessWidget {
   final List<SmbDestinationConfig> destinations;
   final ValueChanged<List<SmbDestinationConfig>> onChanged;
@@ -205,7 +248,7 @@ class ExtraDestinationsSection extends StatelessWidget {
   Future<void> _showAddDialog(BuildContext context) async {
     final created = await showDialog<SmbDestinationConfig>(
       context: context,
-      builder: (_) => const _AddSmbDestinationDialog(),
+      builder: (_) => const _AddDestinationDialog(),
     );
     if (created != null) {
       onChanged([...destinations, created]);
@@ -233,7 +276,7 @@ class ExtraDestinationsSection extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${destinations[i].name} • SMB / NAS',
+                              '${destinations[i].name} • ${destinations[i].typeLabel}',
                               style: theme.textTheme.titleSmall,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -270,7 +313,10 @@ class ExtraDestinationsSection extends StatelessWidget {
                         child: TextButton.icon(
                           key: AppTestKeys.settingsDestinationTest(destinations[i].id),
                           onPressed: () => onTest(destinations[i]),
-                          icon: const Icon(Icons.lan_outlined, size: 16),
+                          icon: Icon(
+                            destinations[i].isS3 ? Icons.cloud_outlined : Icons.lan_outlined,
+                            size: 16,
+                          ),
                           label: const Text('Test'),
                         ),
                       ),
@@ -309,14 +355,16 @@ class ExtraDestinationsSection extends StatelessWidget {
   }
 }
 
-class _AddSmbDestinationDialog extends StatefulWidget {
-  const _AddSmbDestinationDialog();
+class _AddDestinationDialog extends StatefulWidget {
+  const _AddDestinationDialog();
 
   @override
-  State<_AddSmbDestinationDialog> createState() => _AddSmbDestinationDialogState();
+  State<_AddDestinationDialog> createState() => _AddDestinationDialogState();
 }
 
-class _AddSmbDestinationDialogState extends State<_AddSmbDestinationDialog> {
+class _AddDestinationDialogState extends State<_AddDestinationDialog> {
+  String _type = SmbNasDestination.typeId;
+  bool _parallelEnabled = false;
   final _nameCtrl = TextEditingController();
   final _hostCtrl = TextEditingController();
   final _portCtrl = TextEditingController(text: '445');
@@ -341,6 +389,7 @@ class _AddSmbDestinationDialogState extends State<_AddSmbDestinationDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isS3 = _type == S3BackupDestination.typeId;
     return AlertDialog(
       title: const Text('Add Destination'),
       content: SingleChildScrollView(
@@ -348,56 +397,85 @@ class _AddSmbDestinationDialogState extends State<_AddSmbDestinationDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              initialValue: 'smb_nas',
+              initialValue: _type,
+              isExpanded: true,
               decoration: const InputDecoration(labelText: 'Destination Type'),
               items: const [
-                DropdownMenuItem(value: 'smb_nas', child: Text('SMB / NAS')),
+                DropdownMenuItem(
+                  value: SmbNasDestination.typeId,
+                  child: Text('SMB (Samba / Windows Share)', overflow: TextOverflow.ellipsis),
+                ),
+                DropdownMenuItem(
+                  value: S3BackupDestination.typeId,
+                  child: Text('S3 / S3-Compatible', overflow: TextOverflow.ellipsis),
+                ),
               ],
-              onChanged: (_) {},
+              onChanged: (val) {
+                if (val != null) setState(() => _type = val);
+              },
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _nameCtrl,
-              decoration: const InputDecoration(labelText: 'Label (e.g. Offsite NAS)'),
+              decoration: InputDecoration(
+                labelText: isS3 ? 'Label (e.g. MinIO / B2)' : 'Label (e.g. Home Server)',
+              ),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _hostCtrl,
-              decoration: const InputDecoration(labelText: 'SMB Host / IP'),
+              decoration: InputDecoration(
+                labelText: isS3 ? 'S3 Endpoint URL' : 'SMB Host / IP',
+                hintText: isS3 ? 'http://192.168.1.100:9000' : '192.168.1.100',
+              ),
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _portCtrl,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(labelText: 'Port'),
-            ),
+            if (!isS3) ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: _portCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(labelText: 'Port'),
+              ),
+            ],
             const SizedBox(height: 8),
             TextField(
               controller: _shareCtrl,
-              decoration: const InputDecoration(labelText: 'Share Name'),
+              decoration: InputDecoration(labelText: isS3 ? 'Bucket Name' : 'Share Name'),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _basePathCtrl,
-              decoration: const InputDecoration(labelText: 'Base Path (optional)'),
+              decoration: InputDecoration(
+                labelText: isS3 ? 'Key Prefix (optional)' : 'Base Path (optional)',
+              ),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _userCtrl,
-              decoration: const InputDecoration(labelText: 'Username'),
+              decoration: InputDecoration(labelText: isS3 ? 'Access Key ID' : 'Username'),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _passCtrl,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password'),
+              decoration: InputDecoration(labelText: isS3 ? 'Secret Access Key' : 'Password'),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _domainCtrl,
-              decoration: const InputDecoration(labelText: 'Domain (optional)'),
+              decoration: InputDecoration(
+                labelText: isS3 ? 'Region (default: us-east-1)' : 'Domain (optional)',
+              ),
             ),
+            if (!isS3)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Parallel small-file transfer'),
+                value: _parallelEnabled,
+                onChanged: (v) => setState(() => _parallelEnabled = v),
+              ),
           ],
         ),
       ),
@@ -408,14 +486,17 @@ class _AddSmbDestinationDialogState extends State<_AddSmbDestinationDialog> {
             final host = _hostCtrl.text.trim();
             final share = _shareCtrl.text.trim();
             if (host.isEmpty || share.isEmpty) return;
-            final id = 'smb_${DateTime.now().millisecondsSinceEpoch}';
+            final prefix = isS3 ? 's3' : 'smb';
+            final id = '${prefix}_${DateTime.now().millisecondsSinceEpoch}';
             final name = _nameCtrl.text.trim().isEmpty ? '$host/$share' : _nameCtrl.text.trim();
             Navigator.pop(
               context,
               SmbDestinationConfig(
                 id: id,
+                type: _type,
                 name: name,
                 enabled: true,
+                parallelEnabled: !isS3 && _parallelEnabled,
                 host: host,
                 port: int.tryParse(_portCtrl.text.trim()) ?? 445,
                 share: share,

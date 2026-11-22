@@ -295,7 +295,7 @@ void main() {
     await tester.tap(find.byKey(AppTestKeys.openSettings));
     await tester.pumpAndSettle();
     expect(find.byKey(AppTestKeys.settingsDestinationType), findsOneWidget);
-    expect(find.text('SMB NAS'), findsOneWidget);
+    expect(find.text('SMB (Samba / Windows Share)'), findsOneWidget);
 
     // Add a custom folder in Settings and verify it appears on HomeScreen
     await tester.ensureVisible(find.byKey(AppTestKeys.settingsCustomFolderPath));

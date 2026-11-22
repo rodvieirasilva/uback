@@ -39,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   late String _destinationType;
   bool _primaryDestinationEnabled = true;
+  bool _smbParallelEnabled = false;
   List<SmbDestinationConfig> _extraDestinations = const [];
   String _telegramAuthState = 'uninitialized';
 
@@ -59,6 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _telegramApiHashCtrl = TextEditingController(text: s.telegramApiHash);
     _telegramPasswordCtrl = TextEditingController(text: s.telegramPassword);
     _primaryDestinationEnabled = s.primaryDestinationEnabled;
+    _smbParallelEnabled = s.smbParallelEnabled;
     _extraDestinations = List<SmbDestinationConfig>.of(s.extraDestinations);
     _deviceOverrideCtrl = TextEditingController(text: s.deviceFolderOverride);
   }
@@ -94,6 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         telegramApiHash: _telegramApiHashCtrl.text.trim(),
         telegramPassword: _telegramPasswordCtrl.text,
         primaryDestinationEnabled: _primaryDestinationEnabled,
+        smbParallelEnabled: _smbParallelEnabled,
         extraDestinations: List<SmbDestinationConfig>.unmodifiable(_extraDestinations),
         deviceFolderOverride: _deviceOverrideCtrl.text.trim(),
       );
@@ -113,6 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _telegramPasswordCtrl.text = s.telegramPassword;
     setState(() {
       _primaryDestinationEnabled = s.primaryDestinationEnabled;
+      _smbParallelEnabled = s.smbParallelEnabled;
       _extraDestinations = List<SmbDestinationConfig>.of(s.extraDestinations);
     });
     _deviceOverrideCtrl.text = s.deviceFolderOverride;
@@ -280,6 +284,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onDestinationTypeChanged: (val) => setState(() => _destinationType = val),
           enabled: _primaryDestinationEnabled,
           onEnabledChanged: (val) => setState(() => _primaryDestinationEnabled = val),
+          parallelEnabled: _smbParallelEnabled,
+          onParallelEnabledChanged: (val) => setState(() => _smbParallelEnabled = val),
           hostCtrl: _hostCtrl,
           portCtrl: _portCtrl,
           shareCtrl: _shareCtrl,

@@ -48,6 +48,10 @@ data class BackupJobRequest(
     val mode: String, // "copy" or "crop"
     val deviceFolder: String,
     val items: List<BackupItemPayload>,
+    val destinationType: String = "smb_nas",
+    val s3Config: S3BackupClient.S3Config? = null,
+    val smbParallelEnabled: Boolean = false,
+    val smbParallelWorkers: Int = 3,
 )
 
 object BackupSessionBus {
@@ -438,6 +442,40 @@ class BackupForegroundService : Service() {
 
         emitProgress(state = "running", stage = "connecting", currentFile = "")
 
+        val runnerCallbacks = BackupRunners.RunnerCallbacks(
+            onItemVerified = { item, wasSkipped ->
+                if (wasSkipped) skipped++ else transferred++
+                completedBytes += item.sizeBytes
+                emitProgress(state = "running", stage = "verified", currentFile = item.fileName)
+            },
+            onItemError = { item, msg ->
+                failed++
+                errors.add(mapOf("fileName" to item.fileName, "message" to msg))
+                emitProgress(state = "running", stage = "error", currentFile = item.fileName)
+            },
+            onItemProgress = { fileName, stage, inFlight ->
+                emitProgress(state = "running", stage = stage, currentFile = fileName, inFlightBytes = inFlight)
+            },
+            onResetFileTimer = { size -> resetFileTimer(size) },
+            onFatalError = { fileName, msg ->
+                errors.add(mapOf("fileName" to fileName, "message" to msg))
+                emitProgress(state = "error", stage = "error", currentFile = "")
+            },
+            onCancelled = { fileName ->
+                emitProgress(state = "cancelled", stage = "cancelled", currentFile = fileName)
+            },
+            onCompleted = {
+                val finalState = if (failed > 0) "error" else "completed"
+                emitProgress(state = finalState, stage = finalState, currentFile = "")
+            },
+            onTouchActivity = {},
+        )
+
+        if (request.destinationType == "s3" && request.s3Config != null) {
+            BackupRunners.runS3Backup(applicationContext, request, request.s3Config, runnerCallbacks)
+            return
+        }
+
         val smbClient = SmbTransferClient(request.smbConfig)
         // 1-second heartbeat & stalled-socket watchdog so elapsed timer keeps ticking and
         // any half-dead TCP socket after screen lock / Wi-Fi power-save is aborted & retried.
@@ -480,8 +518,14 @@ class BackupForegroundService : Service() {
             }
             if (lastConnectErr != null) throw lastConnectErr
             val zone = ZoneId.systemDefault()
+            val sequentialItems = BackupRunners.runParallelSmbSmallFiles(
+                context = applicationContext,
+                request = request,
+                zone = zone,
+                cb = runnerCallbacks.copy(onTouchActivity = { smbClient.touchActivity() }),
+            )
 
-            for (item in request.items) {
+            for (item in sequentialItems) {
                 val pauseGate = {
                     BackupSessionBus.waitIfPaused(
                         onEnterPaused = {

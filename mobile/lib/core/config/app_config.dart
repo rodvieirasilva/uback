@@ -1,14 +1,14 @@
 import 'dart:convert';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../backup/backup_destination.dart';
 import '../backup/media_exporter.dart';
 import '../backup/media_source.dart';
 import '../utils/path_sanitizer.dart';
 import 'custom_folder_config.dart';
+import 'key_value_store.dart';
 import 'smb_destination_config.dart';
+
+export 'key_value_store.dart';
 
 /// Compile-time defaults injected via `--dart-define-from-file=dart_defines.json`
 /// generated from local (gitignored) `config.toml`.
@@ -22,6 +22,8 @@ class CompileTimeDefaults {
   static const String username = String.fromEnvironment('UBACK_SMB_USERNAME', defaultValue: '');
   static const String password = String.fromEnvironment('UBACK_SMB_PASSWORD', defaultValue: '');
   static const String domain = String.fromEnvironment('UBACK_SMB_DOMAIN', defaultValue: '');
+  static const bool smbParallelEnabled =
+      bool.fromEnvironment('UBACK_SMB_PARALLEL', defaultValue: false);
   static const String whatsappKey =
       String.fromEnvironment('UBACK_WHATSAPP_KEY', defaultValue: '');
   static const bool enableTelegram =
@@ -37,7 +39,7 @@ class CompileTimeDefaults {
   static const String e2eDeviceOverride =
       String.fromEnvironment('UBACK_E2E_DEVICE_OVERRIDE', defaultValue: '');
   static const String appVersion =
-      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.2.13');
+      String.fromEnvironment('UBACK_APP_VERSION', defaultValue: '1.3.0');
   static const String buildDate =
       String.fromEnvironment('UBACK_BUILD_DATE', defaultValue: '');
   static const String gitSha =
@@ -70,6 +72,7 @@ class CompileTimeDefaults {
       username: username,
       password: password,
       domain: domain,
+      smbParallelEnabled: smbParallelEnabled,
       whatsappKey: whatsappKey,
       telegramApiId: telegramApiId,
       telegramApiHash: telegramApiHash,
@@ -95,6 +98,7 @@ class AppSettings {
   final String username;
   final String password;
   final String domain;
+  final bool smbParallelEnabled;
   final String whatsappKey;
   final String telegramApiId;
   final String telegramApiHash;
@@ -120,6 +124,7 @@ class AppSettings {
     required this.username,
     required this.password,
     required this.domain,
+    this.smbParallelEnabled = false,
     this.whatsappKey = '',
     this.telegramApiId = '',
     this.telegramApiHash = '',
@@ -143,8 +148,10 @@ class AppSettings {
       result.add(
         SmbDestinationConfig(
           id: 'primary',
-          name: 'Primary SMB NAS',
+          type: destinationType,
+          name: destinationType == S3BackupDestination.typeId ? 'S3' : 'SMB',
           enabled: true,
+          parallelEnabled: smbParallelEnabled,
           host: host.trim(),
           port: port,
           share: share.trim(),
@@ -171,6 +178,8 @@ class AppSettings {
   }
 
   Map<String, dynamic> toSmbMap() => {
+        'destinationType': destinationType,
+        'parallelEnabled': smbParallelEnabled,
         'host': host.trim(),
         'port': port,
         'share': share.trim(),
@@ -195,6 +204,7 @@ class AppSettings {
     String? username,
     String? password,
     String? domain,
+    bool? smbParallelEnabled,
     String? whatsappKey,
     String? telegramApiId,
     String? telegramApiHash,
@@ -220,6 +230,7 @@ class AppSettings {
       username: username ?? this.username,
       password: password ?? this.password,
       domain: domain ?? this.domain,
+      smbParallelEnabled: smbParallelEnabled ?? this.smbParallelEnabled,
       whatsappKey: whatsappKey ?? this.whatsappKey,
       telegramApiId: telegramApiId ?? this.telegramApiId,
       telegramApiHash: telegramApiHash ?? this.telegramApiHash,
@@ -231,61 +242,6 @@ class AppSettings {
       customFolders: customFolders ?? this.customFolders,
     );
   }
-}
-
-abstract class KeyValueStore {
-  Future<String?> read(String key);
-  Future<void> write(String key, String value);
-  Future<void> delete(String key);
-}
-
-class SharedPrefsStore implements KeyValueStore {
-  @override
-  Future<String?> read(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(key);
-  }
-
-  @override
-  Future<void> write(String key, String value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(key, value);
-  }
-
-  @override
-  Future<void> delete(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(key);
-  }
-}
-
-class SecureKeyValueStore implements KeyValueStore {
-  final FlutterSecureStorage _storage;
-
-  SecureKeyValueStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
-
-  @override
-  Future<String?> read(String key) => _storage.read(key: key);
-
-  @override
-  Future<void> write(String key, String value) => _storage.write(key: key, value: value);
-
-  @override
-  Future<void> delete(String key) => _storage.delete(key: key);
-}
-
-class InMemoryKeyValueStore implements KeyValueStore {
-  final Map<String, String> _data = {};
-
-  @override
-  Future<String?> read(String key) async => _data[key];
-
-  @override
-  Future<void> write(String key, String value) async => _data[key] = value;
-
-  @override
-  Future<void> delete(String key) async => _data.remove(key);
 }
 
 /// Persists full session configuration (destination, exporter, mode, batch limit,
@@ -317,6 +273,7 @@ class AppSettingsRepository {
   static const _kSecretTelegramApiHash = 'uback_telegram_api_hash';
   static const _kSecretTelegramPassword = 'uback_telegram_password';
   static const _kPrimaryDestEnabled = 'uback_primary_dest_enabled';
+  static const _kSmbParallelEnabled = 'uback_smb_parallel_enabled';
   static const _kExtraDestinations = 'uback_extra_destinations';
   static String _destSecretUserKey(String id) => 'uback_dest_${id}_user';
   static String _destSecretPassKey(String id) => 'uback_dest_${id}_pass';
@@ -379,6 +336,7 @@ class AppSettingsRepository {
     final deviceOverride = await _plainStore.read(_kDeviceOverride);
     final telegramApiId = await _plainStore.read(_kTelegramApiId);
     final primaryDestEnabledRaw = await _plainStore.read(_kPrimaryDestEnabled);
+    final smbParallelEnabledRaw = await _plainStore.read(_kSmbParallelEnabled);
     final extraDestinationsRaw = await _plainStore.read(_kExtraDestinations);
     final enabledSourcesRaw = await _plainStore.read(_kEnabledSources);
     final customFoldersRaw = await _plainStore.read(_kCustomFolders);
@@ -462,6 +420,9 @@ class AppSettingsRepository {
       username: username ?? _defaults.username,
       password: password ?? _defaults.password,
       domain: domain ?? _defaults.domain,
+      smbParallelEnabled: smbParallelEnabledRaw != null
+          ? smbParallelEnabledRaw == 'true'
+          : _defaults.smbParallelEnabled,
       whatsappKey: whatsappKey ?? _defaults.whatsappKey,
       telegramApiId: telegramApiId ?? _defaults.telegramApiId,
       telegramApiHash: telegramApiHash ?? _defaults.telegramApiHash,
@@ -495,6 +456,10 @@ class AppSettingsRepository {
     await _plainStore.write(
       _kPrimaryDestEnabled,
       settings.primaryDestinationEnabled.toString(),
+    );
+    await _plainStore.write(
+      _kSmbParallelEnabled,
+      settings.smbParallelEnabled.toString(),
     );
     await _plainStore.write(
       _kExtraDestinations,
@@ -535,6 +500,7 @@ class AppSettingsRepository {
       _kDeviceOverride,
       _kTelegramApiId,
       _kPrimaryDestEnabled,
+      _kSmbParallelEnabled,
       _kExtraDestinations,
       _kEnabledSources,
       _kCustomFolders,

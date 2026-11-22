@@ -104,6 +104,7 @@ def main() -> int:
         "UBACK_SMB_USERNAME": str(smb.get("username", "")),
         "UBACK_SMB_PASSWORD": str(smb.get("password", "")),
         "UBACK_SMB_DOMAIN": str(smb.get("domain", "")),
+        "UBACK_SMB_PARALLEL": "true" if bool(smb.get("parallel_enabled", False)) else "false",
         "UBACK_WHATSAPP_KEY": whatsapp_key,
         "UBACK_ENABLE_TELEGRAM": "true" if bool(telegram.get("enabled", True)) else "false",
         "UBACK_TELEGRAM_API_ID": str(telegram.get("api_id", "")),

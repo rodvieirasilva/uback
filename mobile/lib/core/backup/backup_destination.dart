@@ -50,7 +50,7 @@ class SmbNasDestination implements BackupDestination {
   String get id => typeId;
 
   @override
-  String get displayName => 'SMB NAS';
+  String get displayName => 'SMB (Samba / Windows Share)';
 
   @override
   String get description => 'SMB2/SMB3 network share with SHA-256 read-back verification';
@@ -87,6 +87,55 @@ class SmbNasDestination implements BackupDestination {
   Future<void> stopBackup() => _bridge.stopBackup();
 }
 
+/// S3 / S3-compatible destination (MinIO, Garage, R2, B2, AWS S3) with SigV4 & SHA-256 read-back.
+class S3BackupDestination implements BackupDestination {
+  static const String typeId = 's3';
+
+  final NativeBackupBridge _bridge;
+
+  S3BackupDestination(this._bridge);
+
+  @override
+  String get id => typeId;
+
+  @override
+  String get displayName => 'S3 / S3-Compatible';
+
+  @override
+  String get description => 'S3-compatible object storage with SigV4 & SHA-256 read-back';
+
+  @override
+  bool isConfigured(AppSettings settings) =>
+      settings.host.trim().isNotEmpty && settings.share.trim().isNotEmpty;
+
+  @override
+  Future<ConnectionTestResult> testConnection(AppSettings settings) =>
+      _bridge.testConnection(settings.copyWith(destinationType: typeId));
+
+  @override
+  Future<void> startBackup({
+    required AppSettings settings,
+    required BackupMode mode,
+    required String deviceFolder,
+    required List<BackupItem> items,
+  }) =>
+      _bridge.startBackup(
+        settings: settings.copyWith(destinationType: typeId),
+        mode: mode,
+        deviceFolder: deviceFolder,
+        items: items,
+      );
+
+  @override
+  Future<void> pauseBackup() => _bridge.pauseBackup();
+
+  @override
+  Future<void> resumeBackup() => _bridge.resumeBackup();
+
+  @override
+  Future<void> stopBackup() => _bridge.stopBackup();
+}
+
 /// Registry of supported destinations selectable from compile-time or runtime config.
 class DestinationRegistry {
   final List<BackupDestination> _destinations;
@@ -95,7 +144,7 @@ class DestinationRegistry {
       : _destinations = List.unmodifiable(destinations);
 
   factory DestinationRegistry.defaults(NativeBackupBridge bridge) =>
-      DestinationRegistry([SmbNasDestination(bridge)]);
+      DestinationRegistry([SmbNasDestination(bridge), S3BackupDestination(bridge)]);
 
   List<BackupDestination> get all => _destinations;
 

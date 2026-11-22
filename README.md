@@ -5,7 +5,7 @@
 <h1 align="center">UBack (Ultimate Backup)</h1>
 
 <p align="center">
-  Reliable Android backup app for transferring thousands of photos, videos, WhatsApp & Telegram media, documents, custom folders, and device snapshots over <strong>SMB2/SMB3</strong> with mandatory full <strong>SHA-256 read-back verification</strong>.
+  Reliable Android backup app for transferring thousands of photos, videos, WhatsApp & Telegram media, documents, custom folders, and device snapshots over <strong>SMB2/SMB3</strong> (Windows Share, Linux Samba, macOS, NAS) or <strong>S3 / S3-Compatible</strong> (MinIO, Garage, R2, B2, AWS S3) with mandatory full <strong>SHA-256 read-back verification</strong>.
 </p>
 
 See [docs/RELEASE.md](docs/RELEASE.md) for the release process and [AGENTS.md](AGENTS.md) for engineering guidelines.
@@ -122,7 +122,7 @@ Unlike WhatsApp, **Telegram** stores its local message database (`cache4.db`) in
      *(To exclude Telegram from a custom build, set `enabled = false` or `--dart-define=UBACK_ENABLE_TELEGRAM=false`.)*
   3. **Connect & Enable in UBack**: Open **Settings → Connectors**, tap **Connect Telegram** (enter phone number, OTP code, and optional 2FA password), then enable **Media Sources → Telegram → Incremental Chat Deltas (.db)** (`telegram.deltas`).
   4. **What is exported**: All Main and Archived chats, complete message history on initial backfill and incremental deltas thereafter (`id > watermark`), written to self-contained SQLite `.db` files under `{device}/telegram/deltas/{YYYY}/{MM}/` with `users`, `chats`, and `messages` tables (including replies, forwards, edits, outgoing flag, and full media/poll/sticker/location/contact/call metadata).
-  5. **Test Connectors & Multi-Destination SMB**: Settings includes dedicated **Test SMB**, **Test WhatsApp**, and **Test Telegram** buttons, plus an **Additional SMB Destinations** section where you can add multiple SMB targets and toggle each one on or off.
+  5. **Test Connectors, Multi-Destination SMB/S3 & Parallel SMB**: Settings includes dedicated **Test SMB / Test S3**, **Test WhatsApp**, and **Test Telegram** buttons, an **Add Destination** flow supporting multiple **SMB (Samba / Windows Share)** and **S3 / S3-Compatible** destinations (each with its own enable/disable toggle), and an optional **Parallel small-file transfer** switch for SMB (`<= 5 MB` files transferred concurrently).
 - **Option B — Telegram Desktop Export (Zero API)**:
   - Export chats from **Telegram Desktop** (`Settings → Advanced → Export Telegram data`) and back up that folder via UBack's **Custom Folders**.
 

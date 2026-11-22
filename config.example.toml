@@ -1,26 +1,30 @@
-# Copy this file to `config.toml` and fill in your local backup destination defaults.
-# `config.toml` is gitignored and injected at compile time as default app settings.
+# Copy this file to config.toml and fill in your local backup details.
+# config.toml is gitignored and will NEVER be committed.
 
 [destination]
-# Supported destination types: "smb_nas" (extensible for future destinations)
+# Supported destination types: "smb_nas" (SMB2/SMB3 share) or "s3" (S3 / S3-compatible).
 type = "smb_nas"
 
 [smb]
+# SMB server IP or hostname (Windows shared folder, Linux Samba, macOS File Sharing, or NAS).
 host = "192.168.1.100"
 port = 445
-share = "safe"
-base_path = "local/phone"
-username = "your-nas-user"
-password = "your-nas-password"
+# Top-level SMB share name exported by the server: smb://<host>/<share>/<base_path>
+share = "backup"
+base_path = "phones"
+username = "backup_user"
+password = "change_me"
 domain = ""
+# Enable parallel small-file workers (<= 5 MB) for faster SMB transfers of many small photos/docs.
+parallel_enabled = false
 
-# Optional: 64-digit hex WhatsApp end-to-end encrypted backup key for on-device
-# incremental SQLite chat deltas (`msgstore_delta_*.db`). Leave empty to configure in Settings.
 [whatsapp]
-backup_key_64 = ""
+# Optional 64-digit end-to-end encrypted backup key (from WhatsApp -> Settings -> Chats -> Chat backup)
+# Used locally on-device to export incremental SQLite chat deltas (.db) from msgstore.db.crypt15.
+key_64 = ""
 
-# Optional: Compile-time flag to include Telegram incremental chat delta support.
-# When enabled = true, provide your Telegram API credentials from https://my.telegram.org.
+# Telegram incremental chat deltas (enabled by default).
+# Provide your Telegram Client API credentials from https://my.telegram.org.
 [telegram]
 enabled = true
 api_id = ""

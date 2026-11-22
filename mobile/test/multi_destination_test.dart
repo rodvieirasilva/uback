@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:uback/core/backup/backup_destination.dart';
 import 'package:uback/core/config/app_config.dart';
 import 'package:uback/core/config/smb_destination_config.dart';
 import 'package:uback/core/testing/test_keys.dart';
@@ -174,5 +175,39 @@ void main() {
     idCtrl.dispose();
     hashCtrl.dispose();
     passCtrl.dispose();
+  });
+
+  test('S3 SmbDestinationConfig formats s3:// summary and projects destinationType=s3', () {
+    const s3 = SmbDestinationConfig(
+      id: 's3_1',
+      type: S3BackupDestination.typeId,
+      name: 'MinIO',
+      enabled: true,
+      host: 'http://192.168.1.50:9000',
+      share: 'uback-bucket',
+      basePath: 'phones',
+      username: 'ak',
+      password: 'sk',
+      domain: 'us-east-1',
+    );
+    expect(s3.isS3, isTrue);
+    expect(s3.typeLabel, 'S3');
+    expect(s3.displaySummary, 's3://uback-bucket/phones (http://192.168.1.50:9000)');
+
+    final projected = s3.toAppSettings(CompileTimeDefaults.toSettings());
+    expect(projected.destinationType, S3BackupDestination.typeId);
+    expect(projected.toSmbMap()['destinationType'], S3BackupDestination.typeId);
+  });
+
+  test('AppSettingsRepository persists smbParallelEnabled flag', () async {
+    final repo = AppSettingsRepository(
+      plainStore: InMemoryKeyValueStore(),
+      secureStore: InMemoryKeyValueStore(),
+    );
+    final saved = CompileTimeDefaults.toSettings().copyWith(smbParallelEnabled: true);
+    await repo.save(saved);
+    final loaded = await repo.load();
+    expect(loaded.smbParallelEnabled, isTrue);
+    expect(loaded.toSmbMap()['parallelEnabled'], isTrue);
   });
 }

@@ -255,16 +255,32 @@ class MainActivity : FlutterActivity() {
             "testConnection" -> {
                 val configMap = call.arguments as? Map<*, *>
                 if (configMap == null) {
-                    result.error("INVALID_ARGS", "Expected SMB config map", null)
+                    result.error("INVALID_ARGS", "Expected destination config map", null)
                     return
                 }
-                val smbConfig = SmbConnectionConfig.fromMap(configMap)
+                val destType = configMap["destinationType"] as? String ?: "smb_nas"
                 scope.launch {
                     try {
-                        val msg = withContext(Dispatchers.IO) {
-                            SmbTransferClient(smbConfig).use { it.testConnection() }
+                        if (destType == "s3") {
+                            val s3Cfg = S3BackupClient.S3Config(
+                                endpoint = configMap["host"] as? String ?: "",
+                                region = configMap["domain"] as? String ?: "us-east-1",
+                                bucket = configMap["share"] as? String ?: "",
+                                prefix = configMap["basePath"] as? String ?: "",
+                                accessKey = configMap["username"] as? String ?: "",
+                                secretKey = configMap["password"] as? String ?: "",
+                            )
+                            val (ok, msg) = withContext(Dispatchers.IO) {
+                                S3BackupClient.testConnection(s3Cfg)
+                            }
+                            result.success(mapOf("ok" to ok, "message" to msg))
+                        } else {
+                            val smbConfig = SmbConnectionConfig.fromMap(configMap)
+                            val msg = withContext(Dispatchers.IO) {
+                                SmbTransferClient(smbConfig).use { it.testConnection() }
+                            }
+                            result.success(mapOf("ok" to true, "message" to msg))
                         }
-                        result.success(mapOf("ok" to true, "message" to msg))
                     } catch (e: Throwable) {
                         result.success(
                             mapOf(
@@ -307,11 +323,29 @@ class MainActivity : FlutterActivity() {
                     )
                 }
 
+                val destType = smbMap["destinationType"] as? String ?: "smb_nas"
+                val parallelEnabled = (smbMap["parallelEnabled"] as? Boolean) ?: false
+                val s3Cfg = if (destType == "s3") {
+                    S3BackupClient.S3Config(
+                        endpoint = smbMap["host"] as? String ?: "",
+                        region = smbMap["domain"] as? String ?: "us-east-1",
+                        bucket = smbMap["share"] as? String ?: "",
+                        prefix = smbMap["basePath"] as? String ?: "",
+                        accessKey = smbMap["username"] as? String ?: "",
+                        secretKey = smbMap["password"] as? String ?: "",
+                    )
+                } else {
+                    null
+                }
+
                 BackupSessionBus.pendingRequest = BackupJobRequest(
                     smbConfig = SmbConnectionConfig.fromMap(smbMap),
                     mode = mode,
                     deviceFolder = deviceFolder,
                     items = items,
+                    destinationType = destType,
+                    s3Config = s3Cfg,
+                    smbParallelEnabled = parallelEnabled,
                 )
 
                 val intent = Intent(this, BackupForegroundService::class.java).apply {

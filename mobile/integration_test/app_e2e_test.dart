@@ -334,6 +334,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Secondary E2E NAS'), findsOneWidget);
 
+    // Also add & test a real local S3-compatible destination (http://10.0.2.2:9009)
+    await tester.ensureVisible(find.byKey(AppTestKeys.settingsAddDestination));
+    await tester.tap(find.byKey(AppTestKeys.settingsAddDestination));
+    await tester.pumpAndSettle();
+    final s3TypeDropdown = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(DropdownButtonFormField<String>),
+    );
+    await tester.tap(s3TypeDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('S3 / S3-Compatible').last);
+    await tester.pumpAndSettle();
+    final s3Fields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(s3Fields.at(0), 'Local S3 E2E');
+    await tester.enterText(s3Fields.at(1), 'http://10.0.2.2:9009');
+    await tester.enterText(s3Fields.at(2), 'uback-e2e');
+    await tester.enterText(s3Fields.at(4), 'e2ekey');
+    await tester.enterText(s3Fields.at(5), 'e2esecret');
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('Add')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Local S3 E2E'), findsOneWidget);
+    await tester.tap(find.text('Test').last);
+    await tester.pumpAndSettle(const Duration(seconds: 3));
+    await tester.ensureVisible(find.byKey(AppTestKeys.connectionStatusBanner));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Connected to S3 bucket'), findsOneWidget);
+
     // Test WhatsApp & Telegram TDLib JNI initialization (even without Telegram app installed)
     await tester.ensureVisible(find.byKey(AppTestKeys.settingsTestWhatsapp));
     await tester.tap(find.byKey(AppTestKeys.settingsTestWhatsapp));
