@@ -250,7 +250,7 @@ void main() {
           }
 
           // Also simulate full Activity/UI teardown and cold reopen while BackupForegroundService
-          // continues updating the notification in the background (Alice's phone scenario!):
+          // continues updating the notification in the background (large-library scenario):
           await tester.pumpWidget(const SizedBox.shrink());
           await tester.pump();
           await tester.pumpWidget(UBackApp(key: UniqueKey()));

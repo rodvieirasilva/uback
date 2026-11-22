@@ -503,7 +503,7 @@ void main() {
     expect(resumeBridge.getSourceStatsCalls, greaterThan(scansAfterInit));
     resumeCtrl.dispose();
 
-    // Simulate Alice's phone scenario: huge 5,000-file backup queue with hundreds of rapid
+    // Simulate large-library scenario: huge 5,000-file backup queue with hundreds of rapid
     // progress updates + reopening app while BackupForegroundService is actively running!
     // Must perform ZERO per-file SharedPreferences writes during active run, store only a <200-byte
     // cursor on Stop, and render immediately without scanning MediaStore when reopened mid-run.
