@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Allow synthetic E2E/unit test fixtures and README example"
+paths = [
+  '''README\.md$''',
+  '''mobile/test/.*_test\.dart$''',
+  '''scripts/e2e_.*\.(py|sh)$''',
+]
