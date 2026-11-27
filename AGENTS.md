@@ -34,3 +34,15 @@ This repository follows clean, modular, SOLID engineering practices.
      - `mise run coverage` (all unit & widget tests passing with >= 80% line coverage)
      - `mise run test-e2e` when changing native Android, SMB, MediaStore, or end-to-end UI flows
      - `mise run screenshots` right after E2E tests whenever UI or version changes occur (and before extra chaos/deploy runs).
+
+---
+
+## Secret Scanning (Pre-Commit Gate)
+
+Before committing or pushing, always run:
+
+```bash
+mise run secrets
+```
+
+Ensure zero leaked credentials or secrets (`gitleaks`) are present in the workspace or git history.
